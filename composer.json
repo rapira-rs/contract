@@ -1,0 +1,13 @@
+{
+    "name": "rapira/contract",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Rapira\\": "src/"
+        }
+    },
+    "minimum-stability": "dev",
+    "require": {
+        "php": "^8.4"
+    }
+}
