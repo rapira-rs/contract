@@ -1,0 +1,34 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Rapira\Plugin\Http;
+
+use Rapira\Dispatcher;
+
+/**
+ * The HTTP plugin's dispatcher. Obtain it from {@see \Rapira\get_dispatcher()} when the worker serves
+ * the `http` section of `rapira.toml`.
+ *
+ * ```php
+ * $http = \Rapira\get_dispatcher();
+ *
+ * try {
+ *     while (true) {
+ *         $exchange = $http->receive();
+ *         $exchange->writeBody($kernel->handle($exchange->getRequest()));
+ *     }
+ * } catch (\Rapira\Exception\ClosedException) {
+ *     // drained
+ * }
+ * ```
+ *
+ * {@see self::getInfo()} is not narrowed: an HTTP queue has nothing to report beyond a queue depth and
+ * an active count.
+ */
+interface HttpDispatcher extends Dispatcher
+{
+    public function tryReceive(): ?Exchange;
+
+    public function receive(int $timeout = -1): Exchange;
+}

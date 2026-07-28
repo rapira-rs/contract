@@ -39,7 +39,7 @@ interface Dispatcher
     public function receive(int $timeout = -1): Work;
 
     /** Live plugin counters. Observability only — never a control-flow source. */
-    public function info(): DispatcherInfo;
+    public function getInfo(): DispatcherInfo;
 }
 
 interface Work
@@ -51,7 +51,7 @@ interface Work
 }
 
 /** Immutable snapshot: all values captured at creation, so the counters are consistent. */
-interface RuntimeInfo
+interface DispatcherInfo
 {
     /** @return int<0, max> Units the plugin holds pending, not yet handed to any worker. */
     public function queueSize(): int;
@@ -68,16 +68,39 @@ namespace Rapira\Plugin\Http;
 
 interface HttpDispatcher extends \Rapira\Dispatcher
 {
-    public function tryReceive(): ?RequestHandler;
+    public function tryReceive(): ?Exchange;
 
-    public function receive(int $timeout = -1): RequestHandler;
+    public function receive(int $timeout = -1): Exchange;
 }
 
-interface RequestHandler extends \Rapira\Work
+/** One request/response exchange: the request data plus the verbs that answer it. */
+interface Exchange extends \Rapira\Work
 {
+    public function getRequest(): Request;
+
+    /** Commits status and headers; optional, the first body write commits `200`. Committing is not
+     *  sending — the bytes coalesce with the first body chunk. */
+    public function writeHead(int $status = 200, array $headers = []): void;
+
+    /** Reaches the wire. `$eos` ends the response and finalizes the exchange. */
     public function writeBody(string $content, bool $eos = true): void;
+
+    /** The other ending: a trailer section. Advisory — the host drops it where RFC 9112 forbids one. */
+    public function writeTrailers(array $trailers): void;
+
+    /** Force a committed head out before any body exists, giving up `content-length`. */
+    public function flush(): void;
+
+    /** One `103 Early Hints`, repeatable until the head commits. Advisory: the host drops it where
+     *  the protocol makes it unsafe. */
+    public function sendEarlyHints(array $headers): void;
 }
 ```
+
+The unit is an *exchange*, not a handler: in PHP a handler is the thing that does the work (PSR-15), so
+`RequestHandler` for the thing being worked on would collide with every framework. `HttpExchange`
+(`com.sun.net.httpserver`), `HttpServerExchange` (Undertow) and RFC 9110's own "request/response
+exchange" all name this shape the same way.
 
 ## Rules
 
@@ -90,6 +113,11 @@ interface RequestHandler extends \Rapira\Work
   behaviour at one unit in flight and at N.
 - Waiting suspends the calling fiber, not the thread; outside a fiber it blocks the process, because the
   main context cannot be suspended.
+- `write*` builds the response and commits, without promising the wire: a committed head coalesces with the
+  first body chunk, so a one-shot response is one write with a computed `content-length`, and `flush()`
+  trades that away when the head has to arrive first. `send*` emits a message of its own, immediately —
+  `sendEarlyHints()` is a separate interim response with no later event to coalesce with. The verb tells
+  you which of the two you are doing.
 - Finalization verbs live on the unit and are per-plugin. `Work` carries only the two facts a generic layer
   cannot compute for itself.
 - Unfinalized units are the host's problem: it fails them and recycles the worker per pool policy.
@@ -126,10 +154,14 @@ getting there at all.
 | `@template-covariant` generics | native return-type covariance already does this, engine-checked |
 | `isAlive()` | the exit condition needs one source; `while ($d->isAlive())` around a blocking call is wrong by construction |
 | `concurrency(): int` | blocking is the backpressure; the effective limit is the min of both sides, unexchanged |
-| `inFlight()` as an exit condition | host counts unfinalized units, SDK counts live handlers — different numbers; as a `RuntimeInfo` counter it is fine |
+| `inFlight()` as an exit condition | host counts unfinalized units, SDK counts live handlers — different numbers; as a `DispatcherInfo` counter it is fine |
 | `LifecycleException` | several units in flight is the normal case, not a violation |
 | PSR-7 request objects | pins the extension to a `psr/http-message` major; hydrate in userland |
 | `receiveMany()` | latency poison for request traffic; batching is plugin vocabulary |
+| `respond(Response)`, a `Response` value object | the SDK can build it on `writeHead()`/`writeBody()`; the reverse is impossible, because an atomic response cannot send a head before the first body byte exists |
+| `sendInformational(int $status, ...)` | `100` is answered by the head written before the body is read, never by a verb; `101` needs the raw socket, so it is a plugin and not a status code; `102` is an idle ping on a timer, which is the host's; a named `sendEarlyHints()` cannot be used to violate the protocol, and adding a verb later costs nothing |
+| derived request data (query, cookies, negotiation) | `parse_str()` and friends already do it, per framework conventions |
+| request trailers | S3-style `x-amz-trailer` checksums arrive after a buffered body the host has already closed; a field on `Request`, not a paired verb, and it waits on the body-streaming decision |
 
 ## Open
 
@@ -144,8 +176,15 @@ getting there at all.
    acquisition path, without bringing back config objects.
 4. **Superglobal hydration** as an explicit call on the unit, so the PSR path does not pay for globals it
    never reads.
-5. **Vocabulary.** `RequestHandler` calls the unit of work a handler, while in PHP a handler is the thing
-   that *does* the work.
+5. **Request bodies are buffered.** `Request::$body` is a string, which commits the host to buffering the
+   whole body under a configured limit. Streaming uploads want a pull primitive instead, and the two cannot
+   both consume the same bytes — so adding one later is a mode, not a pure addition. Multipart spooled
+   host-side (`UploadedFile` with a `tmpPath`) is the same decision from the other end.
+6. **`writeTrailers()` is provisional**, pending a team call. Nothing on the framework path can reach it:
+   neither PSR-7 nor HttpFoundation has a vocabulary for trailers, `fetch` and XHR do not expose them, and
+   proxies strip them. The load-bearing user is gRPC's `grpc-status`, which is that plugin's own
+   vocabulary — leaving `Content-Digest` over a long stream as the case that argues for keeping it here.
+   Dropping it costs one method and no signature.
 
 ## References
 
