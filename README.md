@@ -88,6 +88,8 @@ interface RequestHandler extends \Rapira\Work
   `TimeoutException` is "the wait elapsed". No value carries two meanings.
 - At capacity `receive()` waits and `tryReceive()` returns null — backpressure, not an error. Same
   behaviour at one unit in flight and at N.
+- Waiting suspends the calling fiber, not the thread; outside a fiber it blocks the process, because the
+  main context cannot be suspended.
 - Finalization verbs live on the unit and are per-plugin. `Work` carries only the two facts a generic layer
   cannot compute for itself.
 - Unfinalized units are the host's problem: it fails them and recycles the worker per pool policy.

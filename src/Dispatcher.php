@@ -46,6 +46,10 @@ interface Dispatcher
     /**
      * Wait up to $timeout for the next unit of work.
      *
+     * Waiting suspends the fiber it was called from, not the thread: other fibers keep running and
+     * the call resumes when work arrives. Called outside a fiber it blocks the process, since the
+     * main context cannot be suspended.
+     *
      * While the worker holds as many units as its pool allows, the call waits: backpressure, not an
      * error. Finalization verbs live on the returned unit and are plugin-specific.
      *
