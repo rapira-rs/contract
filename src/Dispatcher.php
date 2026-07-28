@@ -23,7 +23,7 @@ use Rapira\Exception\TimeoutException;
  * }
  * ```
  *
- * Plugins narrow {@see self::receive()}, {@see self::tryReceive()} and {@see self::info()} to their
+ * Plugins narrow {@see self::receive()}, {@see self::tryReceive()} and {@see self::getInfo()} to their
  * own types.
  */
 interface Dispatcher
@@ -65,5 +65,5 @@ interface Dispatcher
     /**
      * Live plugin counters. Observability only — never a control-flow source.
      */
-    public function info(): RuntimeInfo;
+    public function getInfo(): DispatcherInfo;
 }

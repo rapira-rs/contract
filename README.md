@@ -39,7 +39,7 @@ interface Dispatcher
     public function receive(int $timeout = -1): Work;
 
     /** Live plugin counters. Observability only — never a control-flow source. */
-    public function info(): RuntimeInfo;
+    public function info(): DispatcherInfo;
 }
 
 interface Work
