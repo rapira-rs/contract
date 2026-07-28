@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Plugin\Logger;
+namespace Rapira;
 
 /**
  * Severity of a log message. Values match PSR-3 log levels, so a PSR wrapper
