@@ -18,12 +18,12 @@ final readonly class Tls
     /**
      * @param non-empty-string $version Protocol version as the TLS stack names it: `TLSv1.3`, `TLSv1.2`.
      * @param non-empty-string $cipher Negotiated cipher suite, likewise: `TLS_AES_256_GCM_SHA384`.
-     * @param non-empty-string|null $alpn Protocol chosen by ALPN — `h2`, `http/1.1` — or null when the
-     *        client offered no list. Not a substitute for {@see Request::$protocol}, which says what was
-     *        actually spoken.
-     * @param non-empty-string|null $sni Server name the client asked for in the handshake, or null if it
-     *        sent none. Not the `Host` header: this one chose the certificate, before any request existed,
-     *        so the two can disagree.
+     * @param non-empty-string|null $negotiatedProtocol What ALPN settled on — `h2`, `http/1.1` — or null
+     *        when the client offered no list. Not a substitute for {@see Request::$protocol}, which says
+     *        what was actually spoken.
+     * @param non-empty-string|null $requestedServerName Name the client asked for through SNI, or null if
+     *        it sent none. Not the `Host` header and not {@see Request::$serverAddr}: this one chose the
+     *        certificate, before any request existed, so it can disagree with both.
      * @param non-empty-string|null $certSerial Serial number of the client certificate, hex.
      * @param non-empty-string|null $certOrganization Organization named in the client certificate's
      *        subject.
@@ -33,8 +33,8 @@ final readonly class Tls
     public function __construct(
         public string $version,
         public string $cipher,
-        public ?string $alpn,
-        public ?string $sni,
+        public ?string $negotiatedProtocol,
+        public ?string $requestedServerName,
         public ?string $certSerial,
         public ?string $certOrganization,
         public ?string $certFingerprint,
