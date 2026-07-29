@@ -22,9 +22,6 @@ use Rapira\Dispatcher;
  *     // drained
  * }
  * ```
- *
- * {@see self::getInfo()} is not narrowed: an HTTP queue has nothing to report beyond a queue depth and
- * an active count.
  */
 interface HttpDispatcher extends Dispatcher
 {

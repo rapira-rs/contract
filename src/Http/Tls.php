@@ -22,8 +22,8 @@ final readonly class Tls
      *        client offered no list. Not a substitute for {@see Request::$protocol}, which says what was
      *        actually spoken.
      * @param non-empty-string|null $sni Server name the client asked for in the handshake, or null if it
-     *        sent none. Not the same claim as the `Host` header: this one chose the certificate, before any
-     *        request existed, so the two disagreeing is worth noticing.
+     *        sent none. Not the `Host` header: this one chose the certificate, before any request existed,
+     *        so the two can disagree.
      * @param non-empty-string|null $certSerial Serial number of the client certificate, hex.
      * @param non-empty-string|null $certOrganization Organization named in the client certificate's
      *        subject.

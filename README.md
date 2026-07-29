@@ -4,11 +4,7 @@ PHP-side contract for [Rapira](https://github.com/rapira-rs), a PHP application 
 PHP is embedded in the server process — no FastCGI, no sockets, no serialization. This package declares the
 types that boundary speaks; the extension provides the objects.
 
-Requires PHP 8.4.
-
-## Scope
-
-Execution modes form a ladder: `Classic → SAPI Worker → Async Worker`.
+Requires PHP 8.4. Execution modes form a ladder: `Classic → SAPI Worker → Async Worker`.
 
 ## Contract
 
@@ -66,11 +62,11 @@ Plugins narrow `receive()` natively and add their own finalization verbs:
 ```php
 namespace Rapira\Http;
 
-use Rapira\Http\Request;interface HttpDispatcher extends \Rapira\Dispatcher
+interface HttpDispatcher extends \Rapira\Dispatcher
 {
-    public function tryReceive(): ?\Rapira\Http\Exchange;
+    public function tryReceive(): ?Exchange;
 
-    public function receive(int $timeout = -1): \Rapira\Http\Exchange;
+    public function receive(int $timeout = -1): Exchange;
 }
 
 /** One request/response exchange: the request data plus the verbs that answer it. */
@@ -95,6 +91,24 @@ interface Exchange extends \Rapira\Work
      *  the protocol makes it unsafe. */
     public function sendEarlyHints(array $headers): void;
 }
+
+final readonly class Request
+{
+    public function __construct(
+        public string $method,      // uppercase, as received
+        public string $uri,         // absolute, synthesized: listener scheme + Host authority
+        public string $target,      // request-target byte-for-byte — what SigV4 signed
+        public string $protocol,    // HTTP/1.1, HTTP/2, HTTP/3
+        public array $headers,      // as received, one entry per value, not normalized
+        public string $body,        // whole: the host buffers before dispatching
+        public string $remoteAddr,
+        public int $remotePort,
+        public string $serverAddr,  // which socket took the call, not the Host header
+        public int $serverPort,
+        public ?Tls $tls,           // null on a plaintext listener
+        public float $receivedAt,   // when the host accepted it, not when the worker took it
+    ) {}
+}
 ```
 
 The unit is an *exchange*, not a handler: in PHP a handler is the thing that does the work (PSR-15), so
@@ -116,17 +130,15 @@ exchange" all name this shape the same way.
 - `write*` builds the response and commits, without promising the wire: a committed head coalesces with the
   first body chunk, so a one-shot response is one write with a computed `content-length`, and `flush()`
   trades that away when the head has to arrive first. `send*` emits a message of its own, immediately —
-  `sendEarlyHints()` is a separate interim response with no later event to coalesce with. The verb tells
-  you which of the two you are doing.
+  `sendEarlyHints()` is a separate interim response with no later event to coalesce with.
 - Finalization verbs live on the unit and are per-plugin. `Work` carries only the two facts a generic layer
   cannot compute for itself.
 - The response is written incrementally, and the SDK builds the atomic conveniences — a PSR-7 stream,
   `respond($response)` — because incremental composes into atomic and not the other way round.
-- The request is not symmetric with it, and deliberately: the host collects the whole body before
-  dispatching and hands it over as one string. That is what keeps a slow uploader from occupying a PHP
-  worker for the length of its upload, and it moves `Expect: 100-continue`, `413` and malformed framing to
-  the host, where no worker is spent on them. What it gives up is answering `401` before the upload
-  arrives — bandwidth, not worker time.
+- The request is deliberately not symmetric with it: the host collects the whole body before dispatching and
+  hands it over as one string, so no PHP worker is held open by a slow uploader and `Expect: 100-continue`,
+  `413` and malformed framing never reach PHP. The cost is answering `401` before the upload arrives —
+  bandwidth, not worker time.
 - Each plugin owns a first-level namespace: `Rapira\Http`, later `Rapira\Grpc`, `Rapira\Jobs`. `Rapira\`
   holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the functions — and
   `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's own, like
@@ -138,6 +150,8 @@ exchange" all name this shape the same way.
   generator has no syntax for them.
 - The consumer is Rapira's SDK, not application code. Test for any addition: could the SDK compute it
   itself? Then it does not belong here.
+- Interfaces state behaviour, not the reasoning behind it. Why something is shaped the way it is, or absent,
+  is recorded here.
 
 ## Exceptions
 
@@ -169,15 +183,15 @@ getting there at all.
 | `LifecycleException` | several units in flight is the normal case, not a violation |
 | PSR-7 request objects | pins the extension to a `psr/http-message` major; hydrate in userland |
 | `receiveMany()` | latency poison for request traffic; batching is plugin vocabulary |
-| `respond(Response)`, a `Response` value object | the SDK can build it on `writeHeader()`/`writeBody()`; the reverse is impossible, because an atomic response cannot send a head before the first body byte exists |
-| `sendInformational(int $status, ...)` | `100` belongs to whoever collects the body, which is the host, so PHP has no moment to answer it in; `101` needs the raw socket, so it is a plugin and not a status code; `102` is an idle ping on a timer, which is the host's; a named `sendEarlyHints()` cannot be used to violate the protocol, and adding a verb later costs nothing |
+| `respond(Response)`, a `Response` value object | the SDK builds it on `writeHeader()`/`writeBody()`; the reverse is impossible, since an atomic response cannot send a head before the first body byte exists |
+| `sendInformational(int $status, ...)` | `100` belongs to whoever collects the body, and that is the host; `101` needs the raw socket, so it is a plugin and not a status code; `102` is an idle ping on a timer, also the host's. A named `sendEarlyHints()` cannot be used to violate the protocol, and a verb can still be added later |
 | derived request data (query, cookies, negotiation) | `parse_str()` and friends already do it, per framework conventions |
-| backing values on `LogLevel` | the host matches cases, so no string is on the wire, and without `tryFrom()` a PSR-3 bridge cannot half-map: `tryFrom($psrLevel) ?? LogLevel::Info` files every emergency under `Info`, because the four PSR-3 names that do not match include all three levels above `error` |
-| request trailers | the host cannot see them: Pingora parses the HTTP/1.1 trailer section only far enough to find the end of the message (`// TODO: proper trailer handling and parsing`) and has a bare `// TODO: trailer` on the HTTP/2 server session, so S3-style `x-amz-trailer` checksums are unreachable in both versions. A field on `Request` when that changes, and it can be a plain one precisely because the body is buffered: Go needs `Request.Trailer` to fill in after `Body` returns EOF, we know the trailers before the exchange exists |
-| a live request stream, read while the client is still sending | it would pin a PHP worker for the duration of the upload, so a handful of slow clients would idle the pool — the reason nginx defaults to `proxy_request_buffering on`. Buffering also removes the HTTP/1.1 deadlock Go's `EnableFullDuplex` exists to opt into |
-| `readBody(): ?string` handing the buffered body over in chunks | it bounds what PHP holds regardless of upload size, which is real, but it is the wrong shape for the case that needs it: an application taking a 1 GB upload wants to keep the file, not to read it, and one taking a 20 KB JSON body wants `$request->body`. Chunks serve neither well enough to be the only spelling, and a path serves the first properly — see Open 5 |
-| `Content-Type` sniffing on the first body write | Go's server guesses from the first 512 bytes because a Go handler legitimately may not know; a PHP application always knows, and guessing a type the browser will then trust is exactly what `X-Content-Type-Options: nosniff` exists to stop. A computed `content-length` stays, because that one is arithmetic |
-| an optional-capability object (`http.ResponseController`) | Go needs it because `ResponseWriter` is a public interface with third-party implementations, so `Flush` had to arrive by type assertion. There is one implementation of `Exchange` and the extension ships with the contract, so `flush()` sits on the interface |
+| backing values on `LogLevel` | the host matches cases, so no string is on the wire — and without `tryFrom()` a PSR-3 bridge cannot half-map: `tryFrom($psrLevel) ?? LogLevel::Info` would file every `emergency` under `Info`, since the four unmatched PSR-3 names include all three levels above `error` |
+| request trailers | Pingora cannot see them — `// TODO: proper trailer handling and parsing` on the HTTP/1.1 trailer section, a bare `// TODO: trailer` on the HTTP/2 server session — so S3-style `x-amz-trailer` checksums are unreachable in both versions. A plain field on `Request` when that changes, which the buffered body allows: Go needs a mutable `Request.Trailer` only because it streams |
+| a live request stream, read while the client is still sending | it would pin a PHP worker for the length of the upload, so a handful of slow clients could idle the pool — the reason nginx defaults to `proxy_request_buffering on`. It also removes the HTTP/1.1 read-write deadlock Go's `EnableFullDuplex` exists to opt into |
+| `readBody(): ?string` handing the buffered body over in chunks | bounds what PHP holds, but serves neither case well: a 1 GB upload wants a path to `rename()`, a 20 KB JSON body wants `$request->body` — see Open 5 |
+| `Content-Type` sniffing on the first body write | Go guesses from the first 512 bytes because a Go handler may not know; a PHP application does, and a guessed type the browser then trusts is what `nosniff` exists to stop. A computed `content-length` stays — arithmetic, not a guess |
+| an optional-capability object (`http.ResponseController`) | Go needs one because `ResponseWriter` is a public interface with third-party implementations, so `Flush` arrives by type assertion. `Exchange` has a single implementation, shipped with the contract, so `flush()` sits on it |
 
 ## Open
 
@@ -187,34 +201,34 @@ getting there at all.
    the scheduler, and `receive()` stands as written. This decides what an integration may do around
    `receive()`.
 2. **Deadlines.** `isCancelled()` answers "still wanted?"; a handler budgeting its own work needs the
-   remaining time too. Cheap to add for consumers, awkward once plugins pick spellings.
+   remaining time too. Cheap to add for consumers, awkward once plugins pick spellings. Go's answer is
+   `ResponseController.SetReadDeadline`/`SetWriteDeadline` — the handler sets a deadline rather than reading
+   what is left of one.
 3. **Non-dispatcher plugins.** A logger or KV client is not a stream of work units and needs a second
    acquisition path, without bringing back config objects.
 4. **Superglobal hydration** as an explicit call on the unit, so the PSR path does not pay for globals it
    never reads.
 5. **Large uploads.** `Request::$body` is a string, so the largest request Rapira accepts is bounded by what
-   a worker can hold, and the host's body limit has to be set below `memory_limit` with room to spare. That
-   is the right trade for request traffic and the wrong one for an upload endpoint, where the handler wants
-   to keep the bytes rather than read them: a path the host spooled to would be a `rename()`. So a
-   `Request::$bodyPath`, or a `tmpPath` on a per-part `UploadedFile`, is the likely addition — which of the
-   two is the same question as multipart, since real upload traffic is `multipart/form-data` and wants
-   parts, not one body. Either is an added field that breaks no signature, so it can wait for a consumer
-   that needs it.
-6. **`writeTrailers()` is provisional**, pending a team call. The split is not dead-versus-alive but browser
-   HTTP versus machine-to-machine HTTP. For keeping it: RFC 9530 (Digest Fields, Standards Track, 2024)
-   gives §6.4 to trailer use and appendix B.11 to a worked `Trailer: Repr-Digest` response, motivated
-   verbatim by calculating the digest "while streaming content and thus mitigate resource consumption" — a
-   standard spelling for the one case this method serves; S3-compatible streaming uploads put
-   `x-amz-checksum-*` in request trailers; Go, Node and Servlet 4.0 implement them, and Envoy, nginx and
-   HAProxy pass them, as they must to proxy gRPC at all. Against: Go's own `Request.Trailer` doc ends with
-   "Few HTTP clients, servers, or proxies support HTTP trailers" — from a stdlib that implements them in
-   both versions, so it is a report from the field and not an excuse; browsers never expose trailers to
-   JavaScript, RFC 9110 §6.5.1 says intermediaries discard them "in most cases" and therefore that a server
-   SHOULD NOT send one the user agent needs, and neither PSR-7 nor HttpFoundation has a vocabulary for them,
-   so the consumer is hand-written or SDK code and never a framework adapter. Decisively: the HTTP front is
-   Pingora, whose `write_response_trailers` is `Self::H1(_) => Ok(())` — `// TODO: support trailers for h1`,
-   still open on main — so on HTTP/1.1 our own host silently drops them, and the method does anything at all
-   only over end-to-end HTTP/2. Dropping it costs one method and no signature.
+   a worker can hold, and the host's body limit belongs below `memory_limit`. That is the right trade for
+   request traffic and the wrong one for an upload endpoint, where the handler wants to keep the bytes and a
+   path the host spooled to would be a `rename()`. So `Request::$bodyPath`, or a `tmpPath` on a per-part
+   `UploadedFile`, is the likely addition — which of the two is the same question as multipart, since real
+   upload traffic is `multipart/form-data` and wants parts, not one body. Either is an added field that
+   breaks no signature, so it can wait for a consumer that needs it.
+6. **`writeTrailers()` is provisional**, pending a team call. The split is browser HTTP versus
+   machine-to-machine HTTP, not dead versus alive. For it: RFC 9530 (Digest Fields, Standards Track, 2024)
+   gives §6.4 and appendix B.11 to a worked `Trailer: Repr-Digest` response, motivated verbatim by computing
+   the digest "while streaming content and thus mitigate resource consumption" — a standard spelling for the
+   one case this method serves; S3-compatible streaming uploads put `x-amz-checksum-*` in request trailers;
+   Go, Node and Servlet 4.0 implement them, and Envoy, nginx and HAProxy pass them, as they must to proxy
+   gRPC at all. Against: browsers never expose trailers to JavaScript, RFC 9110 §6.5.1 says intermediaries
+   discard them "in most cases" and therefore that a server SHOULD NOT send one the user agent needs,
+   neither PSR-7 nor HttpFoundation has a vocabulary for them, and Go's own `Request.Trailer` doc concludes
+   "Few HTTP clients, servers, or proxies support HTTP trailers". Decisively: the HTTP front is Pingora,
+   whose `write_response_trailers` is `Self::H1(_) => Ok(())` — `// TODO: support trailers for h1`, still
+   open on main — so on HTTP/1.1 our own host drops them silently, and the method does anything at all only
+   over end-to-end HTTP/2. Dropping it costs one method and no signature.
+
 ## References
 
 - [rapira-rs/rapira#38](https://github.com/rapira-rs/rapira/issues/38) — plugin handler API; its

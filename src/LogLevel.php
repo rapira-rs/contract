@@ -15,11 +15,8 @@ namespace Rapira;
  *     notice, info                      → Info
  *     debug                             → Debug
  *
- * Write it out as a `match`. Unbacked is deliberate — the host matches cases and nothing on the wire needs
- * the string.
- *
- * The squash is lossy: `emergency` and `error` become one level, and paging usually distinguishes them.
- * Keep the original severity in the log context when that difference matters.
+ * Write it out as a `match`. The squash is lossy: `emergency` and `error` become one level, and paging
+ * usually distinguishes them, so keep the original severity in the log context when that matters.
  */
 enum LogLevel
 {
