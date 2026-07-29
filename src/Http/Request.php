@@ -25,6 +25,16 @@ final readonly class Request
      *        is also the only honest representation of asterisk-form — `OPTIONS *` has `target = "*"`
      *        while $uri falls back to the authority root.
      * @param non-empty-string $protocol `HTTP/1.1`, `HTTP/2`, `HTTP/3`.
+     * @param array<non-empty-string, list<string>> $headers Names as received, one entry per value.
+     *        Deliberately not normalized: casing is protocol-dependent (h2 and h3 lowercase field
+     *        names by spec, h1 preserves whatever the client sent), and case-insensitive lookup is
+     *        the consumer's job — PSR-7 requires it of implementations anyway.
+     * @param string $body The payload as received, with any transfer encoding undone and nothing else
+     *        touched: no form parsing, no JSON decoding. Empty when the request carried none. Whole,
+     *        because the host collects it before dispatching — which is what keeps a slow uploader from
+     *        occupying a worker, and what lets `Expect: 100-continue`, an oversized body and broken framing
+     *        all be answered without PHP. Past the configured limit the host answers `413` and this object
+     *        never exists.
      * @param non-empty-string $remoteAddr Peer IP without the port. Deciding whether to trust it, and
      *        which forwarding header supersedes it, is the framework's business.
      * @param int<0, 65535> $remotePort Peer port. Zero for transports that have none.
@@ -33,32 +43,26 @@ final readonly class Request
      *        may aim at any name the listener answers to: this is which socket took the call, so a
      *        deployment with an internal and an external listener can tell them apart.
      * @param int<0, 65535> $serverPort
-     * @param array<non-empty-string, list<string>> $headers Names as received, one entry per value.
-     *        Deliberately not normalized: casing is protocol-dependent (h2 and h3 lowercase field
-     *        names by spec, h1 preserves whatever the client sent), and case-insensitive lookup is
-     *        the consumer's job — PSR-7 requires it of implementations anyway.
-     * @param string $body Whole body, buffered by the host up to its configured limit. Empty string
-     *        when the request is bodiless.
+     * @param Tls|null $tls What the handshake settled, or null on a plaintext listener. The overlap with
+     *        $uri's scheme is one bit and it is forced: $uri needs a scheme to be a URI at all, while the
+     *        cipher and the client certificate live nowhere else.
      * @param float $receivedAt Unix timestamp with microsecond precision, taken when the host
      *        accepted the request — before it queued and before this worker took it. The only
      *        honest basis for time-to-first-byte and for a deadline the handler sets itself. It dates
      *        this request, not the connection, which on keep-alive carried many others before it.
-     * @param Tls|null $tls What the handshake settled, or null on a plaintext listener. The overlap with
-     *        $uri's scheme is one bit and it is forced: $uri needs a scheme to be a URI at all, while the
-     *        cipher and the client certificate live nowhere else.
      */
     public function __construct(
         public string $method,
         public string $uri,
         public string $target,
         public string $protocol,
+        public array $headers,
+        public string $body,
         public string $remoteAddr,
         public int $remotePort,
         public string $serverAddr,
         public int $serverPort,
-        public array $headers,
-        public string $body,
-        public float $receivedAt,
         public ?Tls $tls,
+        public float $receivedAt,
     ) {}
 }

@@ -120,12 +120,12 @@ interface Exchange extends Work
      * Repeatable until the head commits. Advisory: the host emits it only where the protocol makes it
      * safe and drops it otherwise, so worker code never branches on `$request->protocol`.
      *
-     * The other three assigned `1xx` codes need no verb, for three different reasons. `100` is already
-     * answered by the time the host has collected the body; were request bodies ever streamed, the
-     * answer would be the head written before the first read, as in Go, and still not a verb. `101`
-     * hands the socket to whoever sent it, which an exchange with no read side cannot own — that is a
-     * plugin of its own, not a status code. `102` is an idle-timeout ping on a timer, so it belongs to
-     * the host; an application that wants to say "still here" commits its head and writes bytes.
+     * The other three assigned `1xx` codes need no verb, for three different reasons. `100` belongs to
+     * whoever collects the body, and that is the host — it answers `Expect: 100-continue` before a worker
+     * has the exchange, so PHP has nothing to say and no moment to say it in. `101` hands the socket to
+     * whoever sent it, which an exchange with no read side cannot own — that is a plugin of its own, not a
+     * status code. `102` is an idle-timeout ping on a timer, so it belongs to the host too; an application
+     * that wants to say "still here" commits its head and writes bytes.
      *
      * @param array<non-empty-string, string|list<string>> $headers
      * @throws HeadAlreadySentError The head has already committed.

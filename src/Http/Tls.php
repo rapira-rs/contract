@@ -21,6 +21,9 @@ final readonly class Tls
      * @param non-empty-string|null $alpn Protocol chosen by ALPN — `h2`, `http/1.1` — or null when the
      *        client offered no list. Not a substitute for {@see Request::$protocol}, which says what was
      *        actually spoken.
+     * @param non-empty-string|null $sni Server name the client asked for in the handshake, or null if it
+     *        sent none. Not the same claim as the `Host` header: this one chose the certificate, before any
+     *        request existed, so the two disagreeing is worth noticing.
      * @param non-empty-string|null $certSerial Serial number of the client certificate, hex.
      * @param non-empty-string|null $certOrganization Organization named in the client certificate's
      *        subject.
@@ -31,6 +34,7 @@ final readonly class Tls
         public string $version,
         public string $cipher,
         public ?string $alpn,
+        public ?string $sni,
         public ?string $certSerial,
         public ?string $certOrganization,
         public ?string $certFingerprint,
