@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Plugin\Http;
+namespace Rapira\Http;
 
 use Rapira\Dispatcher;
 

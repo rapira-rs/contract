@@ -64,13 +64,13 @@ interface DispatcherInfo
 Plugins narrow `receive()` natively and add their own finalization verbs:
 
 ```php
-namespace Rapira\Plugin\Http;
+namespace Rapira\Http;
 
-interface HttpDispatcher extends \Rapira\Dispatcher
+use Rapira\Http\Request;interface HttpDispatcher extends \Rapira\Dispatcher
 {
-    public function tryReceive(): ?Exchange;
+    public function tryReceive(): ?\Rapira\Http\Exchange;
 
-    public function receive(int $timeout = -1): Exchange;
+    public function receive(int $timeout = -1): \Rapira\Http\Exchange;
 }
 
 /** One request/response exchange: the request data plus the verbs that answer it. */
@@ -80,12 +80,12 @@ interface Exchange extends \Rapira\Work
 
     /** Commits status and headers; optional, the first body write commits `200`. Committing is not
      *  sending — the bytes coalesce with the first body chunk. */
-    public function writeHead(int $status = 200, array $headers = []): void;
+    public function writeHeader(int $status = 200, array $headers = []): void;
 
     /** Reaches the wire. `$eos` ends the response and finalizes the exchange. */
     public function writeBody(string $content, bool $eos = true): void;
 
-    /** The other ending: a trailer section. Advisory — the host drops it where RFC 9112 forbids one. */
+    /** The other ending: a trailer section. Nothing the client needs — intermediaries discard trailers. */
     public function writeTrailers(array $trailers): void;
 
     /** Force a committed head out before any body exists, giving up `content-length`. */
@@ -120,6 +120,10 @@ exchange" all name this shape the same way.
   you which of the two you are doing.
 - Finalization verbs live on the unit and are per-plugin. `Work` carries only the two facts a generic layer
   cannot compute for itself.
+- Each plugin owns a first-level namespace: `Rapira\Http`, later `Rapira\Grpc`, `Rapira\Jobs`. `Rapira\`
+  holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the functions — and
+  `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's own, like
+  `Http\HeadAlreadySentError`, sit beside its interfaces.
 - Unfinalized units are the host's problem: it fails them and recycles the worker per pool policy.
 - Cancellation is cooperative. VM interrupts are a pool watchdog, not routine cancellation, and cannot fire
   while PHP is inside a blocking native call.
@@ -158,9 +162,10 @@ getting there at all.
 | `LifecycleException` | several units in flight is the normal case, not a violation |
 | PSR-7 request objects | pins the extension to a `psr/http-message` major; hydrate in userland |
 | `receiveMany()` | latency poison for request traffic; batching is plugin vocabulary |
-| `respond(Response)`, a `Response` value object | the SDK can build it on `writeHead()`/`writeBody()`; the reverse is impossible, because an atomic response cannot send a head before the first body byte exists |
+| `respond(Response)`, a `Response` value object | the SDK can build it on `writeHeader()`/`writeBody()`; the reverse is impossible, because an atomic response cannot send a head before the first body byte exists |
 | `sendInformational(int $status, ...)` | `100` is answered by the head written before the body is read, never by a verb; `101` needs the raw socket, so it is a plugin and not a status code; `102` is an idle ping on a timer, which is the host's; a named `sendEarlyHints()` cannot be used to violate the protocol, and adding a verb later costs nothing |
 | derived request data (query, cookies, negotiation) | `parse_str()` and friends already do it, per framework conventions |
+| backing values on `LogLevel` | the host matches cases, so no string is on the wire, and without `tryFrom()` a PSR-3 bridge cannot half-map: `tryFrom($psrLevel) ?? LogLevel::Info` files every emergency under `Info`, because the four PSR-3 names that do not match include all three levels above `error` |
 | request trailers | S3-style `x-amz-trailer` checksums arrive after a buffered body the host has already closed; a field on `Request`, not a paired verb, and it waits on the body-streaming decision |
 
 ## Open
@@ -180,11 +185,19 @@ getting there at all.
    whole body under a configured limit. Streaming uploads want a pull primitive instead, and the two cannot
    both consume the same bytes — so adding one later is a mode, not a pure addition. Multipart spooled
    host-side (`UploadedFile` with a `tmpPath`) is the same decision from the other end.
-6. **`writeTrailers()` is provisional**, pending a team call. Nothing on the framework path can reach it:
-   neither PSR-7 nor HttpFoundation has a vocabulary for trailers, `fetch` and XHR do not expose them, and
-   proxies strip them. The load-bearing user is gRPC's `grpc-status`, which is that plugin's own
-   vocabulary — leaving `Content-Digest` over a long stream as the case that argues for keeping it here.
-   Dropping it costs one method and no signature.
+6. **`writeTrailers()` is provisional**, pending a team call. The split is not dead-versus-alive but browser
+   HTTP versus machine-to-machine HTTP. For keeping it: RFC 9530 (Digest Fields, Standards Track, 2024)
+   gives §6.4 to trailer use and appendix B.11 to a worked `Trailer: Repr-Digest` response, motivated
+   verbatim by calculating the digest "while streaming content and thus mitigate resource consumption" — a
+   standard spelling for the one case this method serves; S3-compatible streaming uploads put
+   `x-amz-checksum-*` in request trailers; Go, Node and Servlet 4.0 implement them, and Envoy, nginx and
+   HAProxy pass them, as they must to proxy gRPC at all. Against: browsers never expose trailers to
+   JavaScript, RFC 9110 §6.5.1 says intermediaries discard them "in most cases" and therefore that a server
+   SHOULD NOT send one the user agent needs, and neither PSR-7 nor HttpFoundation has a vocabulary for them,
+   so the consumer is hand-written or SDK code and never a framework adapter. Decisively: the HTTP front is
+   Pingora, whose `write_response_trailers` is `Self::H1(_) => Ok(())` — `// TODO: support trailers for h1`,
+   still open on main — so on HTTP/1.1 our own host silently drops them, and the method does anything at all
+   only over end-to-end HTTP/2. Dropping it costs one method and no signature.
 
 ## References
 

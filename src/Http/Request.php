@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Plugin\Http;
+namespace Rapira\Http;
 
 /**
  * Request data as the host received it. Not a PSR-7 request and not trying to be one — a userland

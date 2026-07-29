@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Plugin\Http;
+namespace Rapira\Http;
 
 use Rapira\Exception\AlreadyFinalizedError;
 use Rapira\Exception\WorkDiscardedException;
@@ -12,14 +12,14 @@ use Rapira\Work;
  * One HTTP request/response exchange: the request data plus the verbs that answer it.
  *
  * The response is written, never returned. The head commits once — explicitly via
- * {@see self::writeHead()}, or implicitly as `200` on the first body write — then body chunks follow
+ * {@see self::writeHeader()}, or implicitly as `200` on the first body write — then body chunks follow
  * until the response ends, either on a chunk carrying `$eos` or on {@see self::writeTrailers()}. That
  * ending finalizes the exchange.
  *
  * ```php
  * $exchange->writeBody($html);                    // 200, one shot, one write on the wire
  *
- * $exchange->writeHead(200, ['content-type' => ['text/event-stream']]);
+ * $exchange->writeHeader(200, ['content-type' => ['text/event-stream']]);
  * $exchange->flush();                             // the client sees the head before event one
  * foreach ($events as $event) {
  *     $exchange->writeBody($event, eos: false);   // each body write reaches the wire
@@ -52,7 +52,7 @@ interface Exchange extends Work
      * @throws WorkDiscardedException The host closed the exchange first.
      * @throws \ValueError A header name or value is not representable on the wire.
      */
-    public function writeHead(int $status = 200, array $headers = []): void;
+    public function writeHeader(int $status = 200, array $headers = []): void;
 
     /**
      * Write a body chunk, flushing it.
@@ -73,19 +73,25 @@ interface Exchange extends Work
      * End the response with a trailer section, finalizing the exchange. The other ending is
      * {@see self::writeBody()} carrying `$eos`.
      *
-     * Declare the field names in the head as a `trailer` header — only the worker knows them that early,
-     * and HTTP/1.1 recipients that were not told may not look. On HTTP/2 and later there is nothing to
-     * declare and the host sends a final `HEADERS` frame instead.
+     * Put nothing here that the client needs. Intermediaries bridging protocol versions discard trailers
+     * "in most cases" by RFC 9110's own account, which is why the same section says a server SHOULD NOT
+     * send a trailer field it believes the user agent must receive. gRPC gets away with `grpc-status`
+     * only by demanding end-to-end HTTP/2, and browsers never expose trailers to JavaScript at all.
      *
-     * Advisory, like {@see self::sendEarlyHints()}: RFC 9112 forbids a trailer section unless the request
-     * carried `TE: trailers` or every field is metadata safe to discard, so the host drops them where it
-     * must and the response still ends normally.
+     * Delivered on HTTP/2 and later, as a final `HEADERS` frame. On HTTP/1.1 the chunked trailer section
+     * exists on paper but the host does not write one, so they are dropped and the response still ends
+     * normally — the same advisory treatment as {@see self::sendEarlyHints()}. An end-to-end HTTP/2
+     * connection is the real precondition; `TE: trailers` is not one, it only promises that nothing
+     * downstream will drop them. Should HTTP/1.1 delivery ever land, a `trailer` header in the head
+     * declares the field names, which only the worker knows that early.
      *
      * @param array<non-empty-string, string|list<string>> $trailers
      * @throws AlreadyFinalizedError The response already ended.
      * @throws WorkDiscardedException The host closed the exchange first.
-     * @throws \ValueError A field is one the trailer section may not carry — framing, routing,
-     *         authentication, response control data or `content-*` (RFC 9110).
+     * @throws \ValueError The field may not travel in a trailer section. RFC 9110 §6.5.1 puts this as an
+     *         allowlist — the sender must know the field's own definition permits it — which no host can
+     *         enforce, so what is enforced is the categories that rule protects: framing, routing,
+     *         authentication, request modifiers, response controls and content format.
      */
     public function writeTrailers(array $trailers): void;
 
