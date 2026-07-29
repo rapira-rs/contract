@@ -28,6 +28,11 @@ final readonly class Request
      * @param non-empty-string $remoteAddr Peer IP without the port. Deciding whether to trust it, and
      *        which forwarding header supersedes it, is the framework's business.
      * @param int<0, 65535> $remotePort Peer port. Zero for transports that have none.
+     * @param non-empty-string $serverAddr IP of the listener that accepted the connection, and
+     *        $serverPort its port. Not the same claim as the `Host` header, which the client writes and
+     *        may aim at any name the listener answers to: this is which socket took the call, so a
+     *        deployment with an internal and an external listener can tell them apart.
+     * @param int<0, 65535> $serverPort
      * @param array<non-empty-string, list<string>> $headers Names as received, one entry per value.
      *        Deliberately not normalized: casing is protocol-dependent (h2 and h3 lowercase field
      *        names by spec, h1 preserves whatever the client sent), and case-insensitive lookup is
@@ -36,7 +41,11 @@ final readonly class Request
      *        when the request is bodiless.
      * @param float $receivedAt Unix timestamp with microsecond precision, taken when the host
      *        accepted the request — before it queued and before this worker took it. The only
-     *        honest basis for time-to-first-byte and for a deadline the handler sets itself.
+     *        honest basis for time-to-first-byte and for a deadline the handler sets itself. It dates
+     *        this request, not the connection, which on keep-alive carried many others before it.
+     * @param Tls|null $tls What the handshake settled, or null on a plaintext listener. The overlap with
+     *        $uri's scheme is one bit and it is forced: $uri needs a scheme to be a URI at all, while the
+     *        cipher and the client certificate live nowhere else.
      */
     public function __construct(
         public string $method,
@@ -45,8 +54,11 @@ final readonly class Request
         public string $protocol,
         public string $remoteAddr,
         public int $remotePort,
+        public string $serverAddr,
+        public int $serverPort,
         public array $headers,
         public string $body,
         public float $receivedAt,
+        public ?Tls $tls,
     ) {}
 }

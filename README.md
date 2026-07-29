@@ -166,7 +166,7 @@ getting there at all.
 | `sendInformational(int $status, ...)` | `100` is answered by the head written before the body is read, never by a verb; `101` needs the raw socket, so it is a plugin and not a status code; `102` is an idle ping on a timer, which is the host's; a named `sendEarlyHints()` cannot be used to violate the protocol, and adding a verb later costs nothing |
 | derived request data (query, cookies, negotiation) | `parse_str()` and friends already do it, per framework conventions |
 | backing values on `LogLevel` | the host matches cases, so no string is on the wire, and without `tryFrom()` a PSR-3 bridge cannot half-map: `tryFrom($psrLevel) ?? LogLevel::Info` files every emergency under `Info`, because the four PSR-3 names that do not match include all three levels above `error` |
-| request trailers | S3-style `x-amz-trailer` checksums arrive after a buffered body the host has already closed; a field on `Request`, not a paired verb, and it waits on the body-streaming decision |
+| request trailers | the host cannot see them: Pingora parses the HTTP/1.1 trailer section only far enough to find the end of the message (`// TODO: proper trailer handling and parsing`) and has a bare `// TODO: trailer` on the HTTP/2 server session, so S3-style `x-amz-trailer` checksums are unreachable in both versions. A field on `Request` when that changes, not a paired verb |
 
 ## Open
 
