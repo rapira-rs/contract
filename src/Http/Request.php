@@ -13,7 +13,9 @@ namespace Rapira\Http;
 final readonly class Request
 {
     /**
-     * @param non-empty-string $method Uppercase, as received: `GET`, `POST`, and any extension method.
+     * @param non-empty-string $method Byte-for-byte as received, never normalized: methods are
+     *        case-sensitive tokens (RFC 9110 §9.1), so a lowercase extension method stays lowercase and
+     *        is not the uppercase one. Every standard method is uppercase on the wire.
      * @param non-empty-string $uri Absolute form, synthesized by the host: scheme from the listener,
      *        authority from the `Host` header. The routing and URL-generation surface.
      * @param non-empty-string $target Request-target (RFC 9112) byte-for-byte as it appeared on the

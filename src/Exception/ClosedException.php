@@ -10,4 +10,4 @@ namespace Rapira\Exception;
  * Thrown once per worker lifetime, and every later call throws it again. This is the loop's exit —
  * finish the units already in flight and leave.
  */
-class ClosedException extends \RuntimeException implements RapiraException {}
+class ClosedException extends \RuntimeException implements RapiraThrowable {}

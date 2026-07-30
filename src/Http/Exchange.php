@@ -6,6 +6,10 @@ namespace Rapira\Http;
 
 use Rapira\Exception\AlreadyFinalizedError;
 use Rapira\Exception\WorkDiscardedException;
+use Rapira\Http\Exception\ContentLengthExceededError;
+use Rapira\Http\Exception\FileNotSendableException;
+use Rapira\Http\Exception\HeadAlreadyWrittenError;
+use Rapira\Http\Exception\HeadNotWrittenError;
 use Rapira\Work;
 
 /**
@@ -13,8 +17,9 @@ use Rapira\Work;
  *
  * The response is written, never returned. Interim `1xx` heads go out at once and may repeat; the final
  * head commits once — explicitly via {@see self::writeHead()}, or implicitly as `200` on the first body
- * write — then body chunks follow until the response ends, either on a chunk carrying `$eos` or on
- * {@see self::writeTrailers()}. That ending finalizes the exchange.
+ * write — then body chunks follow until the response ends: on a chunk carrying `$eos`, on
+ * {@see self::sendFile()} doing the same, or on {@see self::writeTrailers()}. That ending finalizes the
+ * exchange.
  *
  * ```php
  * $exchange->writeBody($html);                    // 200, one shot, one write on the wire
@@ -64,7 +69,7 @@ interface Exchange extends Work
      *        as writable as `404`.
      * @param array<non-empty-string, list<string>> $headers One entry per value, the shape
      *        {@see Request::$headers} arrives in.
-     * @throws HeadAlreadySentError The final head has already been written.
+     * @throws HeadAlreadyWrittenError The final head has already been written.
      * @throws WorkDiscardedException The host closed the exchange first.
      * @throws \ValueError The status is outside `100`–`599`, or a header name or value is not
      *         representable on the wire.
@@ -128,7 +133,13 @@ interface Exchange extends Work
      * advisory treatment an interim head gets. A `204`, a `304` and any response to `HEAD` have no trailer
      * section either, by the same rule that denies them a body.
      *
+     * Nothing here commits a head: that is {@see self::writeHead()}'s or {@see self::writeBody()}'s job,
+     * so a trailer section may only end a response whose final head is already committed. An empty body
+     * in between is fine — `writeHead(200)` followed by trailers spells a trailers-only response out
+     * explicitly, where an implicit `200` would be an accident.
+     *
      * @param array<non-empty-string, list<string>> $trailers
+     * @throws HeadNotWrittenError No final head has been committed yet.
      * @throws AlreadyFinalizedError The response already ended.
      * @throws WorkDiscardedException The host closed the exchange first.
      * @throws \ValueError The field may not travel in a trailer section: framing, routing,
@@ -141,9 +152,10 @@ interface Exchange extends Work
      * Put everything written so far on the wire.
      *
      * For a head that has to reach the client before any body exists — an event stream whose first event
-     * is seconds away, a response whose `content-type` alone lets the client start work. Costs the host
-     * its `content-length`, so an HTTP/1.1 response falls back to chunked encoding unless the head
-     * carried one itself.
+     * is seconds away, a response whose `content-type` alone lets the client start work. When no head has
+     * been written yet, commits `200` with no fields first — the same implicit head the first
+     * {@see self::writeBody()} commits. Costs the host its `content-length`, so an HTTP/1.1 response
+     * falls back to chunked encoding unless the head carried one itself.
      *
      * @throws AlreadyFinalizedError The response already ended.
      * @throws WorkDiscardedException The host closed the exchange first.

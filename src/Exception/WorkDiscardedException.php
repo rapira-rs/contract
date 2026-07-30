@@ -12,4 +12,4 @@ namespace Rapira\Exception;
  * work at all; catch this to log the loss. Finalizing twice yourself is a different thing —
  * {@see AlreadyFinalizedError}.
  */
-class WorkDiscardedException extends \RuntimeException implements RapiraException {}
+class WorkDiscardedException extends \RuntimeException implements RapiraThrowable {}

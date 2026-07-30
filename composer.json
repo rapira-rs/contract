@@ -1,5 +1,6 @@
 {
     "name": "rapira/contract",
+    "description": "PHP-side contract for Rapira, a PHP application server written in Rust. Stubs only — the extension provides the implementations.",
     "license": "MIT",
     "autoload": {
         "psr-4": {

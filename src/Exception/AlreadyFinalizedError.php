@@ -11,4 +11,4 @@ namespace Rapira\Exception;
  * cleans up. When the *host* got there first — expired deadline, drain, client gone — the worker did
  * nothing wrong and this is not what it gets.
  */
-class AlreadyFinalizedError extends \Error implements RapiraException {}
+class AlreadyFinalizedError extends \Error implements RapiraThrowable {}

@@ -28,4 +28,6 @@ interface HttpDispatcher extends Dispatcher
     public function tryReceive(): ?Exchange;
 
     public function receive(int $timeout = -1): Exchange;
+
+    public function getInfo(): HttpDispatcherInfo;
 }

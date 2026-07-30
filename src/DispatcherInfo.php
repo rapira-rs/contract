@@ -15,7 +15,7 @@ namespace Rapira;
 interface DispatcherInfo
 {
     /** @return int<0, max> Units the plugin holds pending, not yet handed to any worker. */
-    public function queueSize(): int;
+    public function pendingCount(): int;
 
     /** @return int<0, max> Units handed to this worker as {@see Work} and not yet finalized. */
     public function activeCount(): int;

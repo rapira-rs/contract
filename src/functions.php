@@ -17,6 +17,9 @@ function get_version(): string
 /**
  * Get the current dispatcher instance.
  * Returns the same instance for the life of the process.
+ *
+ * @throws Exception\NotInWorkerModeError Called outside worker mode — nothing dispatches work to
+ *         this process, so there is nothing to return.
  */
 function get_dispatcher(): Dispatcher
 {}
@@ -30,8 +33,9 @@ function get_dispatcher(): Dispatcher
  * On queue overflow the message is dropped and the host reports the loss itself.
  *
  * @param array<non-empty-string, mixed> $context JSON-serializable context for structured logging.
- *        The `exception` key is special: if present, it must be an `\Exception` or `\Throwable` and will be serialized
- *        as a structured error.
+ *        The `exception` key is special: when present it must be a `\Throwable`, serialized as a
+ *        structured error. A value that cannot be serialized does not throw either: the record is
+ *        kept, the value is replaced with a placeholder, and the loss is noted in the record itself.
  */
 function log(string $message, LogLevel $level = LogLevel::Info, array $context = []): void
 {}

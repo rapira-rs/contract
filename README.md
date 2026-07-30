@@ -4,15 +4,27 @@ PHP-side contract for [Rapira](https://github.com/rapira-rs), a PHP application 
 PHP is embedded in the server process — no FastCGI, no sockets, no serialization. This package declares the
 types that boundary speaks; the extension provides the objects.
 
-Requires PHP 8.4. Execution modes form a ladder: `Classic → SAPI Worker → Async Worker`.
+Requires PHP 8.4 — the extension's floor; the stubs themselves use nothing newer than 8.2. Execution
+modes form a ladder: `Classic` runs a script per request and has no dispatcher, `SAPI Worker` is a
+long-lived process pulling units of work through this contract, `Async Worker` runs several units
+concurrently on fibers. Everything below lives on the worker rungs.
 
 ## Contract
 
 ```php
 namespace Rapira;
 
-/** Throws outside worker mode. Same instance for the life of the process. */
+/** Throws Exception\NotInWorkerModeError outside worker mode. Same instance for the life of the process. */
 function get_dispatcher(): Dispatcher {}
+
+/** Version of the running Rapira server. */
+function get_version(): string {}
+
+/** Queued to the host under the `app` target. Never blocks, never throws. */
+function log(string $message, LogLevel $level = LogLevel::Info, array $context = []): void {}
+
+/** No backing values; a PSR-3 bridge squashes eight levels into these five. */
+enum LogLevel { case Error; case Warning; case Info; case Debug; case Trace; }
 
 interface Dispatcher
 {
@@ -50,7 +62,7 @@ interface Work
 interface DispatcherInfo
 {
     /** @return int<0, max> Units the plugin holds pending, not yet handed to any worker. */
-    public function queueSize(): int;
+    public function pendingCount(): int;
 
     /** @return int<0, max> Units handed to this worker and not yet finalized. */
     public function activeCount(): int;
@@ -67,6 +79,8 @@ interface HttpDispatcher extends \Rapira\Dispatcher
     public function tryReceive(): ?Exchange;
 
     public function receive(int $timeout = -1): Exchange;
+
+    public function getInfo(): HttpDispatcherInfo;
 }
 
 /** One request/response exchange: the request data plus the verbs that answer it. */
@@ -95,7 +109,7 @@ interface Exchange extends \Rapira\Work
 final readonly class Request
 {
     public function __construct(
-        public string $method,      // uppercase, as received
+        public string $method,      // byte-for-byte, case-sensitive (RFC 9110 §9.1)
         public string $uri,         // absolute, synthesized: listener scheme + Host authority
         public string $target,      // request-target byte-for-byte — what SigV4 signed
         public string $protocol,    // HTTP/1.1, HTTP/2, HTTP/3
@@ -142,8 +156,9 @@ exchange" all name this shape the same way.
   bandwidth, not worker time.
 - Each plugin owns a first-level namespace: `Rapira\Http`, later `Rapira\Grpc`, `Rapira\Jobs`. `Rapira\`
   holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the functions — and
-  `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's own, like
-  `Http\HeadAlreadySentError`, sit beside its interfaces.
+  `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's own live the same
+  way, in its own `Exception\` sub-namespace — `Http\Exception\HeadAlreadyWrittenError` — one rule for
+  where a throwable lives, whichever surface throws it.
 - Unfinalized units are the host's problem: it fails them and recycles the worker per pool policy.
 - Cancellation is cooperative. VM interrupts are a pool watchdog, not routine cancellation, and cannot fire
   while PHP is inside a blocking native call.
@@ -163,7 +178,7 @@ hop-by-hop fields are dropped from a head: chunked is never asked for, it is cho
   cheap: in content-length mode it truncates the write to what remains and reports how many bytes it took,
   so a surplus is both detectable and unsendable — which matters, because surplus bytes on a reused
   connection are read as the start of the next response. The write that would exceed the declaration raises
-  `Http\ContentLengthExceededError`. Ending the response short of it instead leaves a promise unkept, so the
+  `Http\Exception\ContentLengthExceededError`. Ending the response short of it instead leaves a promise unkept, so the
   host closes the connection rather than reusing it.
 - **No `content-length`, and the response ends on its first body write** — one `writeBody($all)` or one
   `sendFile($path)` — so the host computes the length. The head is still buffered at that point, which is
@@ -172,7 +187,8 @@ hop-by-hop fields are dropped from a head: chunked is never asked for, it is cho
 - **No `content-length` and more than one write, or a head already forced out by `flush()`** — HTTP/1.1
   chunked, HTTP/2 and later plain DATA frames ending on `END_STREAM`. Never close-delimited: that is
   Pingora's fallback when a head carries neither field, and its own TODO there notes that keep-alive dies
-  with it.
+  with it. HTTP/1.0 is the one exception — it has no chunked, so a streamed response to a 1.0 client is
+  close-delimited, the only framing the protocol leaves.
 - **`204`, `304`, and any response to `HEAD`** carry neither body nor trailer section, "regardless of the
   header fields present in the message" (RFC 9112 §6.3). Body and trailer writes are accepted and dropped,
   which is what lets a handler answer `HEAD` with the same code path as `GET`. A `content-length` is not
@@ -210,18 +226,24 @@ A host-side compression middleware follows from that sentence:
 
 `Rapira\Exception\TimeoutException` and `Rapira\Exception\ClosedException` are both caught routinely — the
 first by a loop doing periodic chores, the second as the loop's exit — so both need types. They extend the
-SPL class that fits (`\RuntimeException`) and implement the `Rapira\Exception\RapiraException` marker, so
-"anything from Rapira" is catchable without forcing every error into one hierarchy.
+SPL class that fits (`\RuntimeException`) and implement the `Rapira\Exception\RapiraThrowable` marker, so
+"anything from Rapira" is catchable without forcing every error into one hierarchy. The marker is named
+for what it spans: the `\Error` classes below implement it too, which makes it a supervisor's catch at
+the top of the worker, never a handler's.
 
 `AlreadyFinalizedError` extends `\Error` — nobody catches it, the script fatals, the host cleans up. Not
 `\LogicException`, which frameworks catch broadly enough to swallow it. The error/exception split is left
 to the native hierarchy, so `instanceof \Error` keeps meaning "your code is wrong" and no second marker is
-needed for it.
+needed for it. `NotInWorkerModeError` is the same shape: a worker script running where no dispatcher
+exists is wrong by construction.
 
-`Http\ContentLengthExceededError` and `Http\HeadAlreadySentError` are both `\Error` for the same reason as
-`AlreadyFinalizedError`: the response is already unsalvageable by the time either is raised, so there is
-nothing for a handler to do but fatal. `Http\FileNotSendableException` is the opposite case and therefore an
-exception — it is raised before `sendFile()` has written anything, so `404` is still on the table.
+`Http\Exception\ContentLengthExceededError` and `Http\Exception\HeadAlreadyWrittenError` are both `\Error`
+for the same reason as `AlreadyFinalizedError`: the response is already unsalvageable by the time either is
+raised, so there is nothing for a handler to do but fatal. `Http\Exception\HeadNotWrittenError` — a trailer
+section with no committed head — is `\Error` on the other test: nothing is written yet, but the code is
+wrong however the world turns, since nothing on the way to a trailer section commits a head implicitly.
+`Http\Exception\FileNotSendableException` is the case that earns an exception — a correct call the world
+failed, raised before `sendFile()` has written anything, so `404` is still on the table.
 
 `WorkDiscardedException` is finalizing a unit the host had already closed — expired deadline, drain, gone
 client, lease lost to another worker. The worker broke no rule, so it is a runtime exception and not an
@@ -267,8 +289,9 @@ getting there at all.
    remaining time too. Cheap to add for consumers, awkward once plugins pick spellings. Go's answer is
    `ResponseController.SetReadDeadline`/`SetWriteDeadline` — the handler sets a deadline rather than reading
    what is left of one.
-3. **Non-dispatcher plugins.** A logger or KV client is not a stream of work units and needs a second
-   acquisition path, without bringing back config objects.
+3. **Non-dispatcher plugins.** A logger richer than `log()` — its own target, its own sink — or a KV
+   client is not a stream of work units and needs a second acquisition path, without bringing back
+   config objects.
 4. **Superglobal hydration** as an explicit call on the unit, so the PSR path does not pay for globals it
    never reads.
 5. **Large uploads.** `Request::$body` is a string, so the largest request Rapira accepts is bounded by what
@@ -301,6 +324,11 @@ getting there at all.
    whose `write_response_trailers` is `Self::H1(_) => Ok(())` — `// TODO: support trailers for h1`, still
    open on main — so on HTTP/1.1 our own host drops them silently, and the method does anything at all only
    over end-to-end HTTP/2. Dropping it costs one method and no signature.
+8. **HTTP/2 authority and pseudo-headers.** `$uri` says "authority from the `Host` header", but h2 and h3
+   carry it as `:authority` and usually omit `Host` (RFC 9113 §8.3.1); whether pseudo-headers appear in
+   `$headers` (they should not — they are not fields), what `$target` means without a request line
+   (`:path` byte-for-byte), and what `$uri` falls back to on an HTTP/1.0 request with no `Host` (the
+   listener address) are all unstated. Docblock wording only, no signatures.
 
 ## References
 

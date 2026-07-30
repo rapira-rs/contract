@@ -27,8 +27,8 @@ final readonly class Tls
      * @param non-empty-string|null $certSerial Serial number of the client certificate, hex.
      * @param non-empty-string|null $certOrganization Organization named in the client certificate's
      *        subject.
-     * @param non-empty-string|null $certFingerprint Digest of the client certificate, hex — the value to
-     *        pin against, since a serial is only unique per issuer.
+     * @param non-empty-string|null $certFingerprint SHA-256 over the client certificate's DER form,
+     *        lowercase hex — the value to pin against, since a serial is only unique per issuer.
      */
     public function __construct(
         public string $version,

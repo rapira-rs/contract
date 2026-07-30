@@ -15,7 +15,12 @@ use Rapira\Exception\TimeoutException;
  *
  * try {
  *     while (true) {
- *         $work = $dispatcher->receive(1_000_000);
+ *         try {
+ *             $work = $dispatcher->receive(1_000_000);
+ *         } catch (TimeoutException) {
+ *             $tracer->flush(); // a quiet second — time for periodic chores
+ *             continue;
+ *         }
  *         // $work carries the request data and the verbs that finalize it
  *     }
  * } catch (ClosedException) {
