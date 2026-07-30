@@ -23,6 +23,9 @@ use Rapira\Work;
  * $exchange->writeHead(200, ['content-type' => ['text/html']]);
  * $exchange->writeBody($html);                    // the hint was already on the wire
  *
+ * $exchange->writeHead(200, ['content-type' => ['video/mp4']]);
+ * $exchange->sendFile($path);                     // the host streams it; the worker moves on
+ *
  * $exchange->writeHead(200, ['content-type' => ['text/event-stream']]);
  * $exchange->flush();                             // the client sees the head before event one
  * foreach ($events as $event) {
@@ -76,6 +79,34 @@ interface Exchange extends Work
      *         deadline passed, or the worker is draining. A stream learns of it here, on its next write.
      */
     public function writeBody(string $content, bool $eos = true): void;
+
+    /**
+     * Put the bytes of a file, or a slice of one, into the response body.
+     *
+     * The host opens the file and streams it itself, so PHP never holds the bytes: the file's size is
+     * bounded by the disk rather than by `memory_limit`, and a client on a slow link stops occupying a
+     * worker for the length of its download. Commits `200` first if no head has been written yet, and when
+     * `$eos` ends the response here the host knows the length up front, so it can send a `content-length`
+     * without buffering anything.
+     *
+     * No HTTP semantics happen here: no `content-type` guessed from the extension, no `etag`, no
+     * conditional requests, no `Range` parsing. A range response is the handler writing `206` with its own
+     * `content-range` and passing the slice as $offset and $length; a `multipart/byteranges` body is
+     * several calls with `$eos: false`.
+     *
+     * $path is opened by the host and not by PHP, so `open_basedir` does not constrain it and the host's
+     * own configured root does.
+     *
+     * @param non-empty-string $path
+     * @param int<0, max> $offset Byte to start from.
+     * @param int<1, max>|null $length Bytes to send; null sends the rest of the file.
+     * @param bool $eos Ends the response and finalizes the exchange, as in {@see self::writeBody()}.
+     * @throws FileNotSendableException The host cannot send it. Raised before this call writes anything.
+     * @throws AlreadyFinalizedError The response already ended.
+     * @throws WorkDiscardedException The host closed the exchange first.
+     * @throws \ValueError $offset is negative, or $length is zero or negative.
+     */
+    public function sendFile(string $path, int $offset = 0, ?int $length = null, bool $eos = true): void;
 
     /**
      * End the response with a trailer section, finalizing the exchange. The other ending is

@@ -81,6 +81,10 @@ interface Exchange extends \Rapira\Work
     /** Reaches the wire. `$eos` ends the response and finalizes the exchange. */
     public function writeBody(string $content, bool $eos = true): void;
 
+    /** The host opens and streams the file, so PHP never holds the bytes and the worker is not held by
+     *  the download. Nothing else: no `content-type`, no `etag`, no `Range` parsing. */
+    public function sendFile(string $path, int $offset = 0, ?int $length = null, bool $eos = true): void;
+
     /** The other ending: a trailer section. Nothing the client needs — intermediaries discard trailers. */
     public function writeTrailers(array $trailers): void;
 
@@ -126,7 +130,8 @@ exchange" all name this shape the same way.
 - Writing commits without promising the wire: a committed head coalesces with the first body chunk, so a
   one-shot response is one write with a computed `content-length`, and `flush()` trades that away when the
   head has to arrive first. An interim `1xx` head is the exception the protocol itself makes — a complete
-  message of its own, with no later event to coalesce with, so it goes out at once.
+  message of its own, with no later event to coalesce with, so it goes out at once. `send*` says the bytes
+  come from somewhere other than the caller: `sendFile()` names a path and the host reads it.
 - Finalization verbs live on the unit and are per-plugin. `Work` carries only the two facts a generic layer
   cannot compute for itself.
 - The response is written incrementally, and the SDK builds the atomic conveniences — a PSR-7 stream,
@@ -189,6 +194,8 @@ getting there at all.
 | request trailers | Pingora cannot see them — `// TODO: proper trailer handling and parsing` on the HTTP/1.1 trailer section, a bare `// TODO: trailer` on the HTTP/2 server session — so S3-style `x-amz-trailer` checksums are unreachable in both versions. A plain field on `Request` when that changes, which the buffered body allows: Go needs a mutable `Request.Trailer` only because it streams |
 | a live request stream, read while the client is still sending | it would pin a PHP worker for the length of the upload, so a handful of slow clients could idle the pool — the reason nginx defaults to `proxy_request_buffering on`. It also removes the HTTP/1.1 read-write deadlock Go's `EnableFullDuplex` exists to opt into |
 | `readBody(): ?string` handing the buffered body over in chunks | bounds what PHP holds, but serves neither case well: a 1 GB upload wants a path to `rename()`, a 20 KB JSON body wants `$request->body` — see Open 5 |
+| conditional requests, `Range` parsing, `etag` and `content-type` on `sendFile()` | Go's `ServeFile` does all of it, and every PHP framework already does too — Symfony's `BinaryFileResponse` parses `Range` and `If-Range` itself. The verb exists for the one thing userland cannot do, which is not holding the bytes; a `206` is the handler writing its own `content-range` and passing a slice |
+| a stream resource in place of a path on `sendFile()` | a path is the one thing the host can open by itself. A PHP resource may be `php://temp`, a socket or a userland stream wrapper, and reading it would mean going back through PHP for every chunk — exactly what the verb exists to avoid |
 | `Content-Type` sniffing on the first body write | Go guesses from the first 512 bytes because a Go handler may not know; a PHP application does, and a guessed type the browser then trusts is what `nosniff` exists to stop. A computed `content-length` stays — arithmetic, not a guess |
 | an optional-capability object (`http.ResponseController`) | Go needs one because `ResponseWriter` is a public interface with third-party implementations, so `Flush` arrives by type assertion. `Exchange` has a single implementation, shipped with the contract, so `flush()` sits on it |
 
@@ -213,8 +220,18 @@ getting there at all.
    path the host spooled to would be a `rename()`. So `Request::$bodyPath`, or a `tmpPath` on a per-part
    `UploadedFile`, is the likely addition — which of the two is the same question as multipart, since real
    upload traffic is `multipart/form-data` and wants parts, not one body. Either is an added field that
-   breaks no signature, so it can wait for a consumer that needs it.
-6. **`writeTrailers()` is provisional**, pending a team call. The split is browser HTTP versus
+   breaks no signature, so it can wait for a consumer that needs it. The response side of the same problem
+   is already answered by `sendFile()`, and the pair would be symmetric: the host spools an upload to a path
+   and PHP moves it, PHP names a path and the host sends it.
+6. **Which filesystem root `sendFile()` may read from.** The host opens the path, so `open_basedir` does not
+   apply and a handler passing user input through names any file the server process can read. A root belongs
+   in `rapira.toml` by the same rule as the rest of the config, and it wants to exist before the first
+   traversal rather than after one. Zero-copy is a separate and later question: Pingora has no `sendfile(2)`
+   path today — the word appears in the repository only in test nginx configs — and terminating TLS in
+   process rules the syscall out regardless. So what the verb buys now is that PHP never holds the bytes and
+   no worker is held by a download; what it buys later is that the host can change its mind without the
+   contract changing.
+7. **`writeTrailers()` is provisional**, pending a team call. The split is browser HTTP versus
    machine-to-machine HTTP, not dead versus alive. For it: RFC 9530 (Digest Fields, Standards Track, 2024)
    gives §6.4 and appendix B.11 to a worked `Trailer: Repr-Digest` response, motivated verbatim by computing
    the digest "while streaming content and thus mitigate resource consumption" — a standard spelling for the
