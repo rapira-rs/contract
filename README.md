@@ -110,10 +110,11 @@ final readonly class Request
 {
     public function __construct(
         public string $method,      // byte-for-byte, case-sensitive (RFC 9110 §9.1)
-        public string $uri,         // absolute, synthesized: listener scheme + Host authority
-        public string $target,      // request-target byte-for-byte — what SigV4 signed
+        public string $uri,         // absolute, synthesized: listener scheme + $authority
+        public string $target,      // request-target byte-for-byte — what SigV4 signed; :path on h2/h3
+        public ?string $authority,  // :authority or Host, byte-for-byte; null when none was named
         public string $protocol,    // HTTP/1.1, HTTP/2, HTTP/3
-        public array $headers,      // as received, one entry per value, not normalized
+        public array $headers,      // as received, no pseudo-headers, not normalized
         public string $body,        // whole: the host buffers before dispatching
         public string $remoteAddr,
         public int $remotePort,
@@ -154,6 +155,12 @@ exchange" all name this shape the same way.
   hands it over as one string, so no PHP worker is held open by a slow uploader and `Expect: 100-continue`,
   `413` and malformed framing never reach PHP. The cost is answering `401` before the upload arrives —
   bandwidth, not worker time.
+- The client's authority is a field of its own, `$authority`, and `$headers` stay as received. On h2 it
+  travels as `:authority`, which is not a field (RFC 9113 §8.3) and so never appears in `$headers`; without
+  the field the raw fact would survive only inside the synthesized `$uri`, indistinguishable from the
+  listener fallback. Go's server promotes `Host` into `Request.Host` and deletes the header from the map —
+  the same fact at the cost of the raw layer. Here the promotion is additive: nothing is synthesized into
+  `$headers` and nothing is removed from them.
 - Each plugin owns a first-level namespace: `Rapira\Http`, later `Rapira\Grpc`, `Rapira\Jobs`. `Rapira\`
   holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the functions — and
   `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's own live the same
@@ -324,11 +331,6 @@ getting there at all.
    whose `write_response_trailers` is `Self::H1(_) => Ok(())` — `// TODO: support trailers for h1`, still
    open on main — so on HTTP/1.1 our own host drops them silently, and the method does anything at all only
    over end-to-end HTTP/2. Dropping it costs one method and no signature.
-8. **HTTP/2 authority and pseudo-headers.** `$uri` says "authority from the `Host` header", but h2 and h3
-   carry it as `:authority` and usually omit `Host` (RFC 9113 §8.3.1); whether pseudo-headers appear in
-   `$headers` (they should not — they are not fields), what `$target` means without a request line
-   (`:path` byte-for-byte), and what `$uri` falls back to on an HTTP/1.0 request with no `Host` (the
-   listener address) are all unstated. Docblock wording only, no signatures.
 
 ## References
 

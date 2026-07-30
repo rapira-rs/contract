@@ -17,15 +17,26 @@ final readonly class Request
      *        case-sensitive tokens (RFC 9110 §9.1), so a lowercase extension method stays lowercase and
      *        is not the uppercase one. Every standard method is uppercase on the wire.
      * @param non-empty-string $uri Absolute form, synthesized by the host: scheme from the listener,
-     *        authority from the `Host` header. The routing and URL-generation surface.
-     * @param non-empty-string $target Request-target (RFC 9112) byte-for-byte as it appeared on the
-     *        request line, never parsed and never re-encoded — HTTP Message Signatures and SigV4 sign
-     *        this exact string. Also the only honest representation of asterisk-form: `OPTIONS *` has
+     *        authority from $authority, falling back to the listener address when the client named
+     *        none. The routing and URL-generation surface.
+     * @param non-empty-string $target Request-target byte-for-byte, never parsed and never re-encoded —
+     *        HTTP Message Signatures and SigV4 sign this exact string. On HTTP/1.1 it is the
+     *        request-target as it appeared on the request line (RFC 9112); on h2 and h3, which have no
+     *        request line, the `:path` pseudo-header — and the authority for `CONNECT`, which travels
+     *        without one. Also the only honest representation of asterisk-form: `OPTIONS *` has
      *        `target = "*"` while $uri falls back to the authority root.
+     * @param non-empty-string|null $authority The authority the client named, byte-for-byte, whichever
+     *        slot carried it: `:authority` on h2 and h3 — the `Host` header when only that was sent —
+     *        and the `Host` header on HTTP/1.1. Null when the request named none, which HTTP/1.0 alone
+     *        allows: an HTTP/1.1 request without `Host` is answered `400` by the host (RFC 9112 §3.2)
+     *        and never dispatched.
      * @param non-empty-string $protocol `HTTP/1.1`, `HTTP/2`, `HTTP/3`.
      * @param array<non-empty-string, list<string>> $headers Names as received, one entry per value, not
      *        normalized: casing is protocol-dependent — h2 and h3 lowercase field names by spec, h1
      *        preserves whatever the client sent — so case-insensitive lookup is the consumer's job.
+     *        Pseudo-headers are not fields (RFC 9113 §8.3) and never appear here — their facts arrive
+     *        as $method, $target and $authority. `Host` is a field and stays exactly as received, which
+     *        on h2 usually means absent; nothing is synthesized into this array.
      * @param string $body The payload as received, with any transfer encoding undone and nothing else
      *        touched: no form parsing, no JSON decoding. Empty when the request carried none, and whole,
      *        because the host collects it before dispatching. Past the configured limit the host answers
@@ -46,6 +57,7 @@ final readonly class Request
         public string $method,
         public string $uri,
         public string $target,
+        public ?string $authority,
         public string $protocol,
         public array $headers,
         public string $body,
