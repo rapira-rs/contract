@@ -74,9 +74,9 @@ interface Exchange extends \Rapira\Work
 {
     public function getRequest(): Request;
 
-    /** Commits status and headers; optional, the first body write commits `200`. Committing is not
-     *  sending — the bytes coalesce with the first body chunk. */
-    public function writeHeader(int $status = 200, array $headers = []): void;
+    /** Writes a head. `1xx` is interim: on the wire at once, repeatable, advisory. A final head commits
+     *  once, and committing is not sending — the bytes coalesce with the first body chunk. */
+    public function writeHead(int $status, array $headers = []): void;
 
     /** Reaches the wire. `$eos` ends the response and finalizes the exchange. */
     public function writeBody(string $content, bool $eos = true): void;
@@ -86,10 +86,6 @@ interface Exchange extends \Rapira\Work
 
     /** Force a committed head out before any body exists, giving up `content-length`. */
     public function flush(): void;
-
-    /** One `103 Early Hints`, repeatable until the head commits. Advisory: the host drops it where
-     *  the protocol makes it unsafe. */
-    public function sendEarlyHints(array $headers): void;
 }
 
 final readonly class Request
@@ -127,10 +123,10 @@ exchange" all name this shape the same way.
   behaviour at one unit in flight and at N.
 - Waiting suspends the calling fiber, not the thread; outside a fiber it blocks the process, because the
   main context cannot be suspended.
-- `write*` builds the response and commits, without promising the wire: a committed head coalesces with the
-  first body chunk, so a one-shot response is one write with a computed `content-length`, and `flush()`
-  trades that away when the head has to arrive first. `send*` emits a message of its own, immediately —
-  `sendEarlyHints()` is a separate interim response with no later event to coalesce with.
+- Writing commits without promising the wire: a committed head coalesces with the first body chunk, so a
+  one-shot response is one write with a computed `content-length`, and `flush()` trades that away when the
+  head has to arrive first. An interim `1xx` head is the exception the protocol itself makes — a complete
+  message of its own, with no later event to coalesce with, so it goes out at once.
 - Finalization verbs live on the unit and are per-plugin. `Work` carries only the two facts a generic layer
   cannot compute for itself.
 - The response is written incrementally, and the SDK builds the atomic conveniences — a PSR-7 stream,
@@ -183,8 +179,11 @@ getting there at all.
 | `LifecycleException` | several units in flight is the normal case, not a violation |
 | PSR-7 request objects | pins the extension to a `psr/http-message` major; hydrate in userland |
 | `receiveMany()` | latency poison for request traffic; batching is plugin vocabulary |
-| `respond(Response)`, a `Response` value object | the SDK builds it on `writeHeader()`/`writeBody()`; the reverse is impossible, since an atomic response cannot send a head before the first body byte exists |
-| `sendInformational(int $status, ...)` | `100` belongs to whoever collects the body, and that is the host; `101` needs the raw socket, so it is a plugin and not a status code; `102` is an idle ping on a timer, also the host's. A named `sendEarlyHints()` cannot be used to violate the protocol, and a verb can still be added later |
+| `respond(Response)`, a `Response` value object | the SDK builds it on `writeHead()`/`writeBody()`; the reverse is impossible, since an atomic response cannot send a head before the first body byte exists |
+| a mutable header bag on the exchange — `setHeader()`, `removeHeader()`, `getHeaders()` | the head has no incremental dimension: it commits at once, so a bag is not a smaller primitive but the same commit with its intermediate state moved across the boundary. That costs two owners for one fact, one native call per header instead of one per response, and rebuilds the `header()`/`headers_list()` globals every framework wraps to escape. Go needs `Header()` because its stdlib has no response object — PHP has PSR-7, so the bag already exists in userland and arrives as one array |
+| `writeStatus(int)` apart from the headers | the status line and the field lines are one section on the wire, and the fields are never known without the status, so splitting buys a second commit state and no case. A status-only response is `writeHead(204)` |
+| `string` in place of `list<string>` for a header value | `Request::$headers` arrives as lists and PSR-7's `getHeaders()` returns lists, so the scalar form serves neither end of the SDK — two spellings for one fact to save two brackets |
+| a verb of its own for interim responses — `sendEarlyHints()`, `sendInformational()` | `writeHead()` takes any `1xx` and puts it on the wire at once, which is what Go's `WriteHeader` and Pingora's `write_response_header` both do: one verb per head, and one host call per PHP call. The reason to split them was Go's shared mutable header map, cleared on a final status but not on an interim one — passing the fields as an argument means there is no map and no rule. Which `1xx` codes are worth sending is not policed: `101` counts as a final head, since it ends the HTTP conversation, and `100` is the host's answer to `Expect` long before a worker sees the exchange, but writing either is the worker's business |
 | derived request data (query, cookies, negotiation) | `parse_str()` and friends already do it, per framework conventions |
 | backing values on `LogLevel` | the host matches cases, so no string is on the wire — and without `tryFrom()` a PSR-3 bridge cannot half-map: `tryFrom($psrLevel) ?? LogLevel::Info` would file every `emergency` under `Info`, since the four unmatched PSR-3 names include all three levels above `error` |
 | request trailers | Pingora cannot see them — `// TODO: proper trailer handling and parsing` on the HTTP/1.1 trailer section, a bare `// TODO: trailer` on the HTTP/2 server session — so S3-style `x-amz-trailer` checksums are unreachable in both versions. A plain field on `Request` when that changes, which the buffered body allows: Go needs a mutable `Request.Trailer` only because it streams |

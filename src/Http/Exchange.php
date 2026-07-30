@@ -11,15 +11,19 @@ use Rapira\Work;
 /**
  * One HTTP request/response exchange: the request data plus the verbs that answer it.
  *
- * The response is written, never returned. The head commits once — explicitly via
- * {@see self::writeHeader()}, or implicitly as `200` on the first body write — then body chunks follow
- * until the response ends, either on a chunk carrying `$eos` or on {@see self::writeTrailers()}. That
- * ending finalizes the exchange.
+ * The response is written, never returned. Interim `1xx` heads go out at once and may repeat; the final
+ * head commits once — explicitly via {@see self::writeHead()}, or implicitly as `200` on the first body
+ * write — then body chunks follow until the response ends, either on a chunk carrying `$eos` or on
+ * {@see self::writeTrailers()}. That ending finalizes the exchange.
  *
  * ```php
  * $exchange->writeBody($html);                    // 200, one shot, one write on the wire
  *
- * $exchange->writeHeader(200, ['content-type' => ['text/event-stream']]);
+ * $exchange->writeHead(103, ['link' => ['</app.css>; rel=preload']]);
+ * $exchange->writeHead(200, ['content-type' => ['text/html']]);
+ * $exchange->writeBody($html);                    // the hint was already on the wire
+ *
+ * $exchange->writeHead(200, ['content-type' => ['text/event-stream']]);
  * $exchange->flush();                             // the client sees the head before event one
  * foreach ($events as $event) {
  *     $exchange->writeBody($event, eos: false);   // each body write reaches the wire
@@ -32,22 +36,33 @@ interface Exchange extends Work
     public function getRequest(): Request;
 
     /**
-     * Commit the response head: fix the status and headers, and close the window for
-     * {@see self::sendEarlyHints()}. Optional — the first {@see self::writeBody()} commits `200` with no
-     * headers.
+     * Write a response head: a status and the fields that belong with it.
      *
-     * Committing is not sending. The bytes go out coalesced with the first body chunk, so a one-shot
-     * response is a single write with a computed `content-length`; {@see self::flush()} forces them out
-     * early at the cost of that. Interim `1xx` responses are not writable here.
+     * A status of `100`–`199` is an interim response. It reaches the wire at once, on its own, and may be
+     * repeated — `103 Early Hints` is what that is for. Interim responses are advisory: the host emits them
+     * only where the protocol allows, an HTTP/1.0 client being one place it does not, and drops them
+     * otherwise, so worker code never branches on {@see Request::$protocol}.
      *
-     * @param int<200, 599> $status
-     * @param array<non-empty-string, string|list<string>> $headers Sent as given, minus hop-by-hop
-     *        headers and anything the protocol computes itself.
-     * @throws HeadAlreadySentError The head has already committed.
+     * `101` is not interim. It ends the HTTP conversation, so it counts as a final head, and nothing here
+     * hands over the connection it promises.
+     *
+     * A final head — `101`, or `200`–`599` — commits once and closes the door on interim responses.
+     * Committing is not sending: the bytes go out coalesced with the first body chunk, so a one-shot
+     * response is a single write with a computed `content-length`, and {@see self::flush()} forces them out
+     * early at the cost of that. Writing one is optional, since the first {@see self::writeBody()} commits
+     * `200` with no fields.
+     *
+     * @param int<100, 599> $status Any code the protocol allows, registered or not — `499` and `520` are
+     *        as writable as `404`.
+     * @param array<non-empty-string, list<string>> $headers One entry per value, the shape
+     *        {@see Request::$headers} arrives in. Sent as given, minus hop-by-hop headers and anything the
+     *        protocol computes itself.
+     * @throws HeadAlreadySentError The final head has already been written.
      * @throws WorkDiscardedException The host closed the exchange first.
-     * @throws \ValueError A header name or value is not representable on the wire.
+     * @throws \ValueError The status is outside `100`–`599`, or a header name or value is not
+     *         representable on the wire.
      */
-    public function writeHeader(int $status = 200, array $headers = []): void;
+    public function writeHead(int $status, array $headers = []): void;
 
     /**
      * Write a body chunk, flushing it.
@@ -68,9 +83,9 @@ interface Exchange extends Work
      *
      * Delivered over end-to-end HTTP/2 and later, as a final `HEADERS` frame. On HTTP/1.1 they are
      * dropped and the response still ends normally, so put nothing here that the client needs — the same
-     * advisory treatment as {@see self::sendEarlyHints()}.
+     * advisory treatment an interim head gets.
      *
-     * @param array<non-empty-string, string|list<string>> $trailers
+     * @param array<non-empty-string, list<string>> $trailers
      * @throws AlreadyFinalizedError The response already ended.
      * @throws WorkDiscardedException The host closed the exchange first.
      * @throws \ValueError The field may not travel in a trailer section: framing, routing,
@@ -91,16 +106,4 @@ interface Exchange extends Work
      * @throws WorkDiscardedException The host closed the exchange first.
      */
     public function flush(): void;
-
-    /**
-     * Send one `103 Early Hints` interim response carrying exactly these headers, immediately.
-     *
-     * Repeatable until the head commits. Advisory: the host emits it only where the protocol makes it
-     * safe and drops it otherwise, so worker code never branches on {@see Request::$protocol}.
-     *
-     * @param array<non-empty-string, string|list<string>> $headers
-     * @throws HeadAlreadySentError The head has already committed.
-     * @throws WorkDiscardedException The host closed the exchange first.
-     */
-    public function sendEarlyHints(array $headers): void;
 }
