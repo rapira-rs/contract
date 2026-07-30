@@ -154,6 +154,58 @@ exchange" all name this shape the same way.
 - Interfaces state behaviour, not the reasoning behind it. Why something is shaped the way it is, or absent,
   is recorded here.
 
+## Framing
+
+The host frames the response and the worker states what it knows. `transfer-encoding` and the other
+hop-by-hop fields are dropped from a head: chunked is never asked for, it is chosen.
+
+- **A `content-length` in the head is honoured**, and then enforced. Pingora's writer is what makes that
+  cheap: in content-length mode it truncates the write to what remains and reports how many bytes it took,
+  so a surplus is both detectable and unsendable — which matters, because surplus bytes on a reused
+  connection are read as the start of the next response. The write that would exceed the declaration raises
+  `Http\ContentLengthExceededError`. Ending the response short of it instead leaves a promise unkept, so the
+  host closes the connection rather than reusing it.
+- **No `content-length`, and the response ends on its first body write** — one `writeBody($all)` or one
+  `sendFile($path)` — so the host computes the length. The head is still buffered at that point, which is
+  why size is no object here; Go computes one only under 2 KB (`bufferBeforeChunkingSize`), because it has
+  to decide while streaming into a buffer.
+- **No `content-length` and more than one write, or a head already forced out by `flush()`** — HTTP/1.1
+  chunked, HTTP/2 and later plain DATA frames ending on `END_STREAM`. Never close-delimited: that is
+  Pingora's fallback when a head carries neither field, and its own TODO there notes that keep-alive dies
+  with it.
+- **`204`, `304`, and any response to `HEAD`** carry neither body nor trailer section, "regardless of the
+  header fields present in the message" (RFC 9112 §6.3). Body and trailer writes are accepted and dropped,
+  which is what lets a handler answer `HEAD` with the same code path as `GET`. A `content-length` is not
+  synthesised from what was dropped: RFC 9110 §8.6 forbids one on `204` outright, and permits one on `HEAD`
+  or `304` only if it equals what a `GET` or a `200` would have sent — which, the body having been in hand,
+  it can.
+- **`1xx` heads carry no framing fields at all.**
+
+### Content coding
+
+`Content-Encoding` belongs to the representation, not to the transfer: "the representation is defined in
+terms of the coded form, and all other metadata about the representation is about the coded form"
+(RFC 9110 §8.4). So `content-length`, `etag`, `Repr-Digest` and byte ranges all describe the *coded* bytes.
+A host-side compression middleware follows from that sentence:
+
+- It leaves alone any response that already carries `content-encoding` — the worker coded it, and those
+  bytes are the representation. This is also the safe way to serve a large asset: `sendFile('asset.br')`
+  with `content-encoding: br` is a byte-stable stream, so a strong `etag` and byte ranges both stay honest.
+- It never codes a `206`, or a `sendFile()` slice. `content-range` counts offsets in the representation the
+  handler sliced, and coding afterwards leaves the field and the body describing different things.
+- When it does code, it computes `content-length` itself, adds `Vary: Accept-Encoding`, drops
+  `Accept-Ranges`, and weakens or removes the worker's `etag`. Coding on the fly is not byte-stable — level,
+  library version and flush points all move the bytes — so a strong validator would be a lie, and `If-Range`
+  accepts nothing weaker (RFC 9110 §13.1.5). That is the whole reason range requests and on-the-fly
+  compression do not mix, and nginx draws the line in the same place: `gzip` gives up ranges, `gzip_static`
+  keeps them.
+- It honours `cache-control: no-transform` (RFC 9111 §5.2.2.6) as the per-response opt-out. Not a nicety: a
+  response that mixes attacker-controlled input with a secret leaks the secret through its compressed length
+  (BREACH).
+- On a streamed response it either sync-flushes the compressor at every chunk that does not end the
+  response, or leaves that response alone. A compressor holding bytes back turns `flush()` into a lie, and
+  is how `text/event-stream` ends up silent.
+
 ## Exceptions
 
 `Rapira\Exception\TimeoutException` and `Rapira\Exception\ClosedException` are both caught routinely — the
@@ -165,6 +217,11 @@ SPL class that fits (`\RuntimeException`) and implement the `Rapira\Exception\Ra
 `\LogicException`, which frameworks catch broadly enough to swallow it. The error/exception split is left
 to the native hierarchy, so `instanceof \Error` keeps meaning "your code is wrong" and no second marker is
 needed for it.
+
+`Http\ContentLengthExceededError` and `Http\HeadAlreadySentError` are both `\Error` for the same reason as
+`AlreadyFinalizedError`: the response is already unsalvageable by the time either is raised, so there is
+nothing for a handler to do but fatal. `Http\FileNotSendableException` is the opposite case and therefore an
+exception — it is raised before `sendFile()` has written anything, so `404` is still on the table.
 
 `WorkDiscardedException` is finalizing a unit the host had already closed — expired deadline, drain, gone
 client, lease lost to another worker. The worker broke no rule, so it is a runtime exception and not an

@@ -55,11 +55,15 @@ interface Exchange extends Work
      * early at the cost of that. Writing one is optional, since the first {@see self::writeBody()} commits
      * `200` with no fields.
      *
+     * The host frames the response, so `transfer-encoding` and the other hop-by-hop fields are dropped from
+     * $headers: chunked is never asked for, it is chosen. A `content-length` there is honoured, and then
+     * enforced against what the body writes actually amount to. A `content-encoding` marks the body as
+     * already coded, which is what keeps a compression middleware off it.
+     *
      * @param int<100, 599> $status Any code the protocol allows, registered or not — `499` and `520` are
      *        as writable as `404`.
      * @param array<non-empty-string, list<string>> $headers One entry per value, the shape
-     *        {@see Request::$headers} arrives in. Sent as given, minus hop-by-hop headers and anything the
-     *        protocol computes itself.
+     *        {@see Request::$headers} arrives in.
      * @throws HeadAlreadySentError The final head has already been written.
      * @throws WorkDiscardedException The host closed the exchange first.
      * @throws \ValueError The status is outside `100`–`599`, or a header name or value is not
@@ -70,10 +74,16 @@ interface Exchange extends Work
     /**
      * Write a body chunk, flushing it.
      *
+     * A `204` or `304`, and any response to a `HEAD` request, carries no body whatever its head says
+     * (RFC 9112 §6.3), so chunks written for one are accepted and dropped. That is deliberate: a handler
+     * answers `HEAD` with the same code path it answers `GET`.
+     *
      * @param bool $eos Ends the response and finalizes the exchange. Pass `false` to keep streaming; an
      *        empty chunk with `$eos` ends a response that has no more bytes to send. An empty chunk
      *        without it does nothing, since a zero-length chunk is how a chunked body terminates — to
      *        get a committed head out with no body yet, use {@see self::flush()}.
+     * @throws ContentLengthExceededError This write goes past the `content-length` the head declared.
+     *         The surplus is not sent, and neither is anything written after it.
      * @throws AlreadyFinalizedError The response already ended.
      * @throws WorkDiscardedException The host closed the exchange first — the client is gone, the
      *         deadline passed, or the worker is draining. A stream learns of it here, on its next write.
@@ -95,7 +105,8 @@ interface Exchange extends Work
      * several calls with `$eos: false`.
      *
      * $path is opened by the host and not by PHP, so `open_basedir` does not constrain it and the host's
-     * own configured root does.
+     * own configured root does. A slice is never content-coded on the way out, since `content-range` counts
+     * offsets in the representation the handler sliced.
      *
      * @param non-empty-string $path
      * @param int<0, max> $offset Byte to start from.
@@ -114,7 +125,8 @@ interface Exchange extends Work
      *
      * Delivered over end-to-end HTTP/2 and later, as a final `HEADERS` frame. On HTTP/1.1 they are
      * dropped and the response still ends normally, so put nothing here that the client needs — the same
-     * advisory treatment an interim head gets.
+     * advisory treatment an interim head gets. A `204`, a `304` and any response to `HEAD` have no trailer
+     * section either, by the same rule that denies them a body.
      *
      * @param array<non-empty-string, list<string>> $trailers
      * @throws AlreadyFinalizedError The response already ended.
