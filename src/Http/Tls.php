@@ -22,7 +22,7 @@ final readonly class Tls
      *        when the client offered no list. Not a substitute for {@see Request::$protocol}, which says
      *        what was actually spoken.
      * @param non-empty-string|null $requestedServerName Name the client asked for through SNI, or null if
-     *        it sent none. Not the `Host` header and not {@see Request::$serverAddr}: this one chose the
+     *        it sent none. Not the `Host` header and not {@see Request::$server}: this one chose the
      *        certificate, before any request existed, so it can disagree with both.
      * @param non-empty-string|null $certSerial Serial number of the client certificate, hex.
      * @param non-empty-string|null $certOrganization Organization named in the client certificate's

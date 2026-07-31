@@ -109,19 +109,42 @@ interface Exchange extends \Rapira\Work
 final readonly class Request
 {
     public function __construct(
-        public string $method,      // byte-for-byte, case-sensitive (RFC 9110 §9.1)
-        public string $uri,         // absolute, synthesized: listener scheme + $authority
-        public string $target,      // request-target byte-for-byte — what SigV4 signed; :path on h2/h3
-        public ?string $authority,  // :authority or Host, byte-for-byte; null when none was named
-        public string $protocol,    // HTTP/1.1, HTTP/2, HTTP/3
-        public array $headers,             // as received, no pseudo-headers, not normalized
-        public string|Multipart $body,     // bytes as received — or the parsed form; never both, by type
-        public string $remoteAddr,
-        public int $remotePort,
-        public string $serverAddr,  // which socket took the call, not the Host header
-        public int $serverPort,
-        public ?Tls $tls,           // null on a plaintext listener
-        public float $receivedAt,   // when the host accepted it, not when the worker took it
+        public string $method,                   // byte-for-byte, case-sensitive (RFC 9110 §9.1)
+        public string $uri,                      // absolute, synthesized: listener scheme + $authority
+        public string $target,                   // request-target byte-for-byte — what SigV4 signed; :path on h2/h3
+        public ?string $authority,               // :authority or Host, byte-for-byte; null when none was named
+        public string $protocol,                 // HTTP/1.1, HTTP/2, HTTP/3
+        public array $headers,                   // as received, no pseudo-headers, not normalized
+        public string|Multipart $body,           // bytes as received — or the parsed form; never both, by type
+        public InetAddress|UnixAddress $remote,  // the peer's end; a unix peer is usually unnamed
+        public InetAddress|UnixAddress $server,  // which socket took the call, not the Host header
+        public ?Tls $tls,                        // null on a plaintext listener
+        public float $receivedAt,                // when the host accepted it, not when the worker took it
+    ) {}
+}
+
+/** What $body is when the host parsed a multipart/form-data upload as it streamed in. */
+final readonly class Multipart
+{
+    public function __construct(
+        public array $fields,  // list<FormField>: name, value, part headers — parts without a filename
+        public array $files,   // list<UploadedFile>: name, clientFilename, part headers, tmpPath
+    ) {}
+}
+
+/** The two arms of an address: a port exists exactly when the endpoint is an IP one. */
+final readonly class InetAddress
+{
+    public function __construct(
+        public string $ip,
+        public int $port,      // int<1, 65535> — the zero sentinel is gone with the union
+    ) {}
+}
+
+final readonly class UnixAddress
+{
+    public function __construct(
+        public ?string $path,  // null: an unnamed peer, the usual case for a connecting client
     ) {}
 }
 ```
@@ -169,6 +192,9 @@ exchange" all name this shape the same way.
   only inside the synthesized `$uri`, indistinguishable from the listener fallback. Go promotes `Host` into
   a field and deletes the header from the map — here the promotion is additive: nothing enters or leaves
   `$headers`.
+- Addresses are the union `InetAddress|UnixAddress`, mirroring Pingora's own `SocketAddr`: a unix
+  listener has no IP and its connecting peer usually no name at all, so "a port exists" is a fact the
+  type states — not a zero sentinel carrying two meanings.
 - Each plugin owns a first-level namespace: `Rapira\Http`, later `Rapira\Grpc`, `Rapira\Jobs`. `Rapira\`
   holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the functions — and
   `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's own live the same

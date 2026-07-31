@@ -48,13 +48,11 @@ final readonly class Request
      *        answers `413`, and a malformed multipart body — bad framing, a duplicated
      *        `content-disposition` or parameter — is answered `400` and never dispatched, so no two
      *        parsers in the chain can disagree about it.
-     * @param non-empty-string $remoteAddr Peer IP without the port. Deciding whether to trust it, and
-     *        which forwarding header supersedes it, is the framework's business.
-     * @param int<0, 65535> $remotePort Peer port. Zero for transports that have none.
-     * @param non-empty-string $serverAddr IP of the listener that accepted the connection, and
-     *        $serverPort its port: which socket took the call, not the `Host` header the client wrote.
-     *        A deployment with an internal and an external listener tells them apart by this.
-     * @param int<0, 65535> $serverPort
+     * @param InetAddress|UnixAddress $remote The peer's end of the connection. Deciding whether to
+     *        trust it, and which forwarding header supersedes it, is the framework's business.
+     * @param InetAddress|UnixAddress $server The listener that accepted the connection: which socket
+     *        took the call, not the `Host` header the client wrote. A deployment with an internal and
+     *        an external listener tells them apart by this.
      * @param Tls|null $tls What the handshake settled, or null on a plaintext listener.
      * @param float $receivedAt Unix timestamp with microsecond precision, taken when the host accepted
      *        the request — before it queued and before this worker took it. It dates this request, not
@@ -68,10 +66,8 @@ final readonly class Request
         public string $protocol,
         public array $headers,
         public string|Multipart $body,
-        public string $remoteAddr,
-        public int $remotePort,
-        public string $serverAddr,
-        public int $serverPort,
+        public InetAddress|UnixAddress $remote,
+        public InetAddress|UnixAddress $server,
         public ?Tls $tls,
         public float $receivedAt,
     ) {}
