@@ -115,7 +115,9 @@ final readonly class Request
         public ?string $authority,  // :authority or Host, byte-for-byte; null when none was named
         public string $protocol,    // HTTP/1.1, HTTP/2, HTTP/3
         public array $headers,      // as received, no pseudo-headers, not normalized
-        public string $body,        // whole: the host buffers before dispatching
+        public string $body,        // whole: the host buffers before dispatching; '' when multipart parsed
+        public array $fields,       // list<FormField> — multipart field parts: name, value, part headers
+        public array $files,        // list<UploadedFile> — multipart file parts, spooled to disk
         public string $remoteAddr,
         public int $remotePort,
         public string $serverAddr,  // which socket took the call, not the Host header
@@ -154,6 +156,15 @@ exchange" all name this shape the same way.
   hands it over as one string, so no PHP worker is held open by a slow uploader and `Expect: 100-continue`,
   `413` and malformed framing never reach PHP. The cost is answering `401` before the upload arrives —
   bandwidth, not worker time.
+- `multipart/form-data` is parsed by the host as the upload streams in: a part with a `filename` spools
+  to disk and arrives as `UploadedFile`, a part without stays in memory as `FormField`, and `$body`
+  arrives empty — the payload has one spelling. Both classes keep their part's header section, because a
+  part is more than its value: an API client marks a field `content-type: application/json`. Limits live
+  in `rapira.toml` (`413` past them); a malformed body — bad framing, a duplicated `content-disposition`
+  or parameter — is `400` before dispatch, so no two parsers in the chain can disagree about it. Spooled
+  files live until the exchange finalizes: `rename()` keeps one, the host deletes the rest. The pair
+  completes `sendFile()`'s symmetry: the host spools an upload and PHP moves it, PHP names a path and
+  the host sends it.
 - `$authority` is the raw fact and `$uri` the resolved one. On h2 the authority travels as `:authority`,
   which is not a field (RFC 9113 §8.3) and never appears in `$headers`; without the field it would survive
   only inside the synthesized `$uri`, indistinguishable from the listener fallback. Go promotes `Host` into
@@ -268,7 +279,10 @@ getting there at all.
 | CN, SAN and issuer on `Tls`, or a field per certificate attribute | fingerprint pinning covers mTLS identity, and Pingora's `SslDigest` exposes nothing more ([pingora#421](https://github.com/cloudflare/pingora/issues/421)). When names are needed, the addition is one `certPem` field with the whole certificate — `openssl_x509_parse()` reads every attribute in userland |
 | request trailers | Pingora cannot parse them in either HTTP version (`// TODO: trailer`), so S3-style `x-amz-trailer` checksums are unreachable. A plain added field on `Request` when that changes — the buffered body allows it |
 | a live request stream, read while the client is still sending | pins a worker for the length of the upload, so a handful of slow clients idles the pool — the reason nginx defaults to `proxy_request_buffering on`. Also removes the HTTP/1.1 read-write deadlock Go's `EnableFullDuplex` exists to opt into |
-| `readBody(): ?string` handing the buffered body over in chunks | bounds what PHP holds, but serves neither case well: a 1 GB upload wants a path to `rename()`, a 20 KB JSON body wants `$request->body` — see Open 5 |
+| `readBody(): ?string` handing the buffered body over in chunks | bounds what PHP holds, but serves neither case well: a 20 KB JSON body wants `$request->body`, and the 1 GB upload is already a path — `$files` |
+| `$size`, `$clientMediaType`, `$error` on `UploadedFile` | `filesize($tmpPath)`; `$headers['content-type'][0]`; and errors cannot reach PHP — the host answers `413`/`400` first. PSR-7 hydration maps an empty `$clientFilename` to `UPLOAD_ERR_NO_FILE` and everything delivered to `UPLOAD_ERR_OK` |
+| a `moveTo()` verb on `UploadedFile` | `rename()` is that verb, and PHP already has it |
+| parsing `multipart/mixed`, `multipart/related` | RFC 7578 dropped nested multipart; anything but `form-data` arrives as the raw `$body` |
 | conditional requests, `Range` parsing, `etag` and `content-type` on `sendFile()` | Go's `ServeFile` does all of it and every PHP framework already does too. The verb exists for the one thing userland cannot do — not holding the bytes; a `206` is the handler writing its own `content-range` and passing a slice |
 | a stream resource in place of a path on `sendFile()` | a path is the one thing the host can open by itself; a PHP resource may be `php://temp` or a userland wrapper, and reading it means going back through PHP for every chunk — exactly what the verb exists to avoid |
 | `Content-Type` sniffing on the first body write | Go guesses from the first 512 bytes because a Go handler may not know; a PHP application does, and a guessed type the browser then trusts is what `nosniff` exists to stop |
@@ -290,12 +304,10 @@ getting there at all.
    config objects.
 4. **Superglobal hydration** as an explicit call on the unit, so the PSR path does not pay for globals it
    never reads.
-5. **Large uploads.** `Request::$body` bounds the largest accepted request by what a worker can hold, and
-   the host's body limit belongs below `memory_limit`. Right for request traffic, wrong for an upload
-   endpoint, where the handler wants a spooled path it can `rename()`. The likely addition —
-   `Request::$bodyPath`, or a `tmpPath` on a per-part `UploadedFile`, the same question as multipart — is
-   an added field that breaks no signature, so it waits for a consumer. `sendFile()` already answers the
-   response side, and the pair would be symmetric.
+5. **Large raw bodies.** Multipart is answered by `$files`, but a large `PUT` of raw bytes is still
+   bounded by what a worker holds, and the host's body limit belongs below `memory_limit`. The symmetric
+   addition is `Request::$bodyPath` — the host spooling a body past a threshold to disk — an added field
+   that breaks no signature, so it waits for a consumer that needs it.
 6. **Which filesystem root `sendFile()` may read from.** The host opens the path, so `open_basedir` does
    not apply and user input passed through names any file the server process can read. A root belongs in
    `rapira.toml`, and it wants to exist before the first traversal rather than after one. Zero-copy is a
