@@ -114,10 +114,8 @@ final readonly class Request
         public string $target,      // request-target byte-for-byte — what SigV4 signed; :path on h2/h3
         public ?string $authority,  // :authority or Host, byte-for-byte; null when none was named
         public string $protocol,    // HTTP/1.1, HTTP/2, HTTP/3
-        public array $headers,      // as received, no pseudo-headers, not normalized
-        public string $body,        // whole: the host buffers before dispatching; '' when multipart parsed
-        public array $fields,       // list<FormField> — multipart field parts: name, value, part headers
-        public array $files,        // list<UploadedFile> — multipart file parts, spooled to disk
+        public array $headers,             // as received, no pseudo-headers, not normalized
+        public string|Multipart $body,     // bytes as received — or the parsed form; never both, by type
         public string $remoteAddr,
         public int $remotePort,
         public string $serverAddr,  // which socket took the call, not the Host header
@@ -157,8 +155,9 @@ exchange" all name this shape the same way.
   `413` and malformed framing never reach PHP. The cost is answering `401` before the upload arrives —
   bandwidth, not worker time.
 - `multipart/form-data` is parsed by the host as the upload streams in: a part with a `filename` spools
-  to disk and arrives as `UploadedFile`, a part without stays in memory as `FormField`, and `$body`
-  arrives empty — the payload has one spelling. Both classes keep their part's header section, because a
+  to disk and arrives as `UploadedFile`, a part without stays in memory as `FormField`, and `$body` is
+  the `Multipart` holding both. The union `string|Multipart` is the point: "raw or parsed, never both"
+  is enforced by the engine, not documented. Both classes keep their part's header section, because a
   part is more than its value: an API client marks a field `content-type: application/json`. Limits live
   in `rapira.toml` (`413` past them); a malformed body — bad framing, a duplicated `content-disposition`
   or parameter — is `400` before dispatch, so no two parsers in the chain can disagree about it. Spooled
@@ -279,7 +278,7 @@ getting there at all.
 | CN, SAN and issuer on `Tls`, or a field per certificate attribute | fingerprint pinning covers mTLS identity, and Pingora's `SslDigest` exposes nothing more ([pingora#421](https://github.com/cloudflare/pingora/issues/421)). When names are needed, the addition is one `certPem` field with the whole certificate — `openssl_x509_parse()` reads every attribute in userland |
 | request trailers | Pingora cannot parse them in either HTTP version (`// TODO: trailer`), so S3-style `x-amz-trailer` checksums are unreachable. A plain added field on `Request` when that changes — the buffered body allows it |
 | a live request stream, read while the client is still sending | pins a worker for the length of the upload, so a handful of slow clients idles the pool — the reason nginx defaults to `proxy_request_buffering on`. Also removes the HTTP/1.1 read-write deadlock Go's `EnableFullDuplex` exists to opt into |
-| `readBody(): ?string` handing the buffered body over in chunks | bounds what PHP holds, but serves neither case well: a 20 KB JSON body wants `$request->body`, and the 1 GB upload is already a path — `$files` |
+| `readBody(): ?string` handing the buffered body over in chunks | bounds what PHP holds, but serves neither case well: a 20 KB JSON body wants `$request->body`, and the 1 GB upload is already a path — `Multipart::$files` |
 | `$size`, `$clientMediaType`, `$error` on `UploadedFile` | `filesize($tmpPath)`; `$headers['content-type'][0]`; and errors cannot reach PHP — the host answers `413`/`400` first. PSR-7 hydration maps an empty `$clientFilename` to `UPLOAD_ERR_NO_FILE` and everything delivered to `UPLOAD_ERR_OK` |
 | a `moveTo()` verb on `UploadedFile` | `rename()` is that verb, and PHP already has it |
 | parsing `multipart/mixed`, `multipart/related` | RFC 7578 dropped nested multipart; anything but `form-data` arrives as the raw `$body` |
@@ -304,10 +303,14 @@ getting there at all.
    config objects.
 4. **Superglobal hydration** as an explicit call on the unit, so the PSR path does not pay for globals it
    never reads.
-5. **Large raw bodies.** Multipart is answered by `$files`, but a large `PUT` of raw bytes is still
-   bounded by what a worker holds, and the host's body limit belongs below `memory_limit`. The symmetric
-   addition is `Request::$bodyPath` — the host spooling a body past a threshold to disk — an added field
-   that breaks no signature, so it waits for a consumer that needs it.
+5. **Large raw bodies — `SpooledBody`.** Multipart is answered by `Multipart::$files`, but a large `PUT`
+   of raw bytes is still bounded by what a worker holds, and the host's body limit belongs below
+   `memory_limit`. The shape is decided: a third arm of the body union, `string|Multipart|SpooledBody`,
+   where `SpooledBody` carries one `non-empty-string $path` — the host spools past a `rapira.toml`
+   threshold, the file lives until the exchange finalizes, `rename()` keeps it. A class rather than a
+   path in the string arm, because a path in `$body` would be unreadable as one. It waits for a
+   consumer: the threshold and which requests spool are host config surface not worth designing before
+   the first real use, and widening a union is cheap only while nobody `match`es it exhaustively.
 6. **Which filesystem root `sendFile()` may read from.** The host opens the path, so `open_basedir` does
    not apply and user input passed through names any file the server process can read. A root belongs in
    `rapira.toml`, and it wants to exist before the first traversal rather than after one. Zero-copy is a

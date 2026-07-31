@@ -37,20 +37,17 @@ final readonly class Request
      *        Pseudo-headers are not fields (RFC 9113 §8.3) and never appear here — their facts arrive
      *        as $method, $target and $authority. `Host` is a field and stays exactly as received, which
      *        on h2 usually means absent; nothing is synthesized into this array.
-     * @param string $body The payload as received, with any transfer encoding undone and nothing else
-     *        touched: no form parsing, no JSON decoding. Empty when the request carried none, and whole,
-     *        because the host collects it before dispatching. Past the configured limit the host answers
-     *        `413` and this object never exists. Also empty when the host parsed a `multipart/form-data`
-     *        body into $fields and $files — the payload has one spelling, there or here.
-     * @param list<FormField> $fields Field parts of a `multipart/form-data` body — parts whose
-     *        `content-disposition` carries no `filename` — in document order, buffered in memory.
-     *        Empty on anything that is not parsed multipart. Only `multipart/form-data` is parsed:
-     *        `multipart/mixed` and the rest arrive as raw $body. A malformed body — bad framing, a
-     *        duplicated `content-disposition` or parameter — is answered `400` and never dispatched,
-     *        so no two parsers can disagree about it.
-     * @param list<UploadedFile> $files File parts of the same body, spooled to disk as the upload
-     *        streamed in, in document order. Limits — file size, part count, total — live in
-     *        `rapira.toml`; past them the host answers `413`.
+     * @param string|Multipart $body The payload, in exactly one spelling — the union is what enforces
+     *        it. A body is read by its framing, never by the method name: a `QUERY` body arrives the
+     *        same way a `POST` one does. A string is the bytes as received, transfer encoding undone
+     *        and nothing else touched:
+     *        no form parsing, no JSON decoding — empty when the request carried none, and whole,
+     *        because the host collects it before dispatching. A {@see Multipart} is a
+     *        `multipart/form-data` body the host parsed instead; only that type is parsed —
+     *        `multipart/mixed` and the rest stay raw. Limits live in `rapira.toml`: past them the host
+     *        answers `413`, and a malformed multipart body — bad framing, a duplicated
+     *        `content-disposition` or parameter — is answered `400` and never dispatched, so no two
+     *        parsers in the chain can disagree about it.
      * @param non-empty-string $remoteAddr Peer IP without the port. Deciding whether to trust it, and
      *        which forwarding header supersedes it, is the framework's business.
      * @param int<0, 65535> $remotePort Peer port. Zero for transports that have none.
@@ -70,9 +67,7 @@ final readonly class Request
         public ?string $authority,
         public string $protocol,
         public array $headers,
-        public string $body,
-        public array $fields,
-        public array $files,
+        public string|Multipart $body,
         public string $remoteAddr,
         public int $remotePort,
         public string $serverAddr,
