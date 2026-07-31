@@ -128,7 +128,7 @@ final readonly class Multipart
 {
     public function __construct(
         public array $fields,  // list<FormField>: name, value, part headers — parts without a filename
-        public array $files,   // list<UploadedFile>: name, clientFilename, part headers, tmpPath
+        public array $files,   // list<UploadedFile>: name, clientFilename, clientMediaType, headers, tmpPath, size
     ) {}
 }
 
@@ -181,8 +181,11 @@ exchange" all name this shape the same way.
   to disk and arrives as `UploadedFile`, a part without stays in memory as `FormField`, and `$body` is
   the `Multipart` holding both. The union `string|Multipart` is the point: "raw or parsed, never both"
   is enforced by the engine, not documented. Both classes keep their part's header section, because a
-  part is more than its value: an API client marks a field `content-type: application/json`. Limits live
-  in `rapira.toml` (`413` past them); a malformed body — bad framing, a duplicated `content-disposition`
+  part is more than its value: an API client marks a field `content-type: application/json`.
+  `UploadedFile` also lifts `$clientMediaType` and `$size`, both derivable from `$headers` and
+  `$tmpPath` — but the PSR-7 hydration derives them for every file of every request, so "could the SDK
+  compute it" yields where the SDK must compute it every time and the host already holds both facts.
+  Limits live in `rapira.toml` (`413` past them); a malformed body — bad framing, a duplicated `content-disposition`
   or parameter — is `400` before dispatch, so no two parsers in the chain can disagree about it. Spooled
   files live until the exchange finalizes: `rename()` keeps one, the host deletes the rest. The pair
   completes `sendFile()`'s symmetry: the host spools an upload and PHP moves it, PHP names a path and
@@ -305,7 +308,7 @@ getting there at all.
 | request trailers | Pingora cannot parse them in either HTTP version (`// TODO: trailer`), so S3-style `x-amz-trailer` checksums are unreachable. A plain added field on `Request` when that changes — the buffered body allows it |
 | a live request stream, read while the client is still sending | pins a worker for the length of the upload, so a handful of slow clients idles the pool — the reason nginx defaults to `proxy_request_buffering on`. Also removes the HTTP/1.1 read-write deadlock Go's `EnableFullDuplex` exists to opt into |
 | `readBody(): ?string` handing the buffered body over in chunks | bounds what PHP holds, but serves neither case well: a 20 KB JSON body wants `$request->body`, and the 1 GB upload is already a path — `Multipart::$files` |
-| `$size`, `$clientMediaType`, `$error` on `UploadedFile` | `filesize($tmpPath)`; `$headers['content-type'][0]`; and errors cannot reach PHP — the host answers `413`/`400` first. PSR-7 hydration maps an empty `$clientFilename` to `UPLOAD_ERR_NO_FILE` and everything delivered to `UPLOAD_ERR_OK` |
+| `$error` / `UPLOAD_ERR_*` on `UploadedFile` | errors cannot reach PHP — the host answers `413`/`400` first; hydration maps an empty `$clientFilename` to `UPLOAD_ERR_NO_FILE` and everything else to `UPLOAD_ERR_OK` |
 | a `moveTo()` verb on `UploadedFile` | `rename()` is that verb, and PHP already has it |
 | parsing `multipart/mixed`, `multipart/related` | RFC 7578 dropped nested multipart; anything but `form-data` arrives as the raw `$body` |
 | conditional requests, `Range` parsing, `etag` and `content-type` on `sendFile()` | Go's `ServeFile` does all of it and every PHP framework already does too. The verb exists for the one thing userland cannot do — not holding the bytes; a `206` is the handler writing its own `content-range` and passing a slice |

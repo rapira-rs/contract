@@ -19,16 +19,22 @@ final readonly class UploadedFile
      * @param string $clientFilename `filename` byte-for-byte as sent — untrusted, never a path to
      *        touch. Its presence is what made this a file part; empty is a browser submitting an
      *        empty file input (PSR-7's `UPLOAD_ERR_NO_FILE`).
+     * @param non-empty-string|null $clientMediaType The part's `content-type` value byte-for-byte,
+     *        parameters included; null when the part carried none. A claim, not a measurement,
+     *        exactly like $clientFilename — `finfo_file($tmpPath)` is the measurement.
      * @param array<non-empty-string, list<string>> $headers The part's header section as received,
-     *        the shape of {@see Request::$headers}. `content-type` lives here:
-     *        `$headers['content-type'][0]` is PSR-7's `getClientMediaType()`.
-     * @param non-empty-string $tmpPath Where the host spooled the bytes; `filesize()` is the size.
-     *        Gone when the exchange finalizes — `rename()` to keep.
+     *        the shape of {@see Request::$headers}.
+     * @param non-empty-string $tmpPath Where the host spooled the bytes. Gone when the exchange
+     *        finalizes — `rename()` to keep.
+     * @param int<0, max> $size Bytes on disk — what `filesize($tmpPath)` would say, known to the
+     *        host that wrote them.
      */
     public function __construct(
         public string $name,
         public string $clientFilename,
+        public ?string $clientMediaType,
         public array $headers,
         public string $tmpPath,
+        public int $size,
     ) {}
 }
