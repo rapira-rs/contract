@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Rapira\Http;
 
+use Rapira\InetAddress;
+use Rapira\UnixAddress;
+
 /**
  * Request data as the host received it. Not a PSR-7 request: a userland adapter hydrates
  * `ServerRequestInterface` from this, against whichever `psr/http-message` major the project uses.

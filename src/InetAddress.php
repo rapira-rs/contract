@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Http;
+namespace Rapira;
 
 /**
- * An IP endpoint of the connection — one arm of the address union on {@see Request::$remote} and
- * {@see Request::$server}; the other is {@see UnixAddress}. The union is why there is no zero
- * sentinel: a port exists exactly when the endpoint is an IP one.
+ * An IP endpoint of a connection — one arm of the address union plugins put on their request shapes
+ * ({@see \Rapira\Http\Request::$remote}); the other arm is {@see UnixAddress}. The union is why
+ * there is no zero sentinel: a port exists exactly when the endpoint is an IP one.
  */
 final readonly class InetAddress
 {

@@ -67,12 +67,31 @@ interface DispatcherInfo
     /** @return int<0, max> Units handed to this worker and not yet finalized. */
     public function activeCount(): int;
 }
+
+/** The two arms of an address: a port exists exactly when the endpoint is an IP one. */
+final readonly class InetAddress
+{
+    public function __construct(
+        public string $ip,
+        public int $port,      // int<1, 65535> — the zero sentinel is gone with the union
+    ) {}
+}
+
+final readonly class UnixAddress
+{
+    public function __construct(
+        public ?string $path,  // null: an unnamed peer, the usual case for a connecting client
+    ) {}
+}
 ```
 
 Plugins narrow `receive()` natively and add their own finalization verbs:
 
 ```php
 namespace Rapira\Http;
+
+use Rapira\InetAddress;
+use Rapira\UnixAddress;
 
 interface HttpDispatcher extends \Rapira\Dispatcher
 {
@@ -131,22 +150,6 @@ final readonly class Multipart
         public array $files,   // list<UploadedFile>: name, clientFilename, clientMediaType, headers, tmpPath, size
     ) {}
 }
-
-/** The two arms of an address: a port exists exactly when the endpoint is an IP one. */
-final readonly class InetAddress
-{
-    public function __construct(
-        public string $ip,
-        public int $port,      // int<1, 65535> — the zero sentinel is gone with the union
-    ) {}
-}
-
-final readonly class UnixAddress
-{
-    public function __construct(
-        public ?string $path,  // null: an unnamed peer, the usual case for a connecting client
-    ) {}
-}
 ```
 
 The unit is an *exchange*, not a handler: in PHP a handler is the thing that does the work (PSR-15), so
@@ -199,7 +202,8 @@ exchange" all name this shape the same way.
   listener has no IP and its connecting peer usually no name at all, so "a port exists" is a fact the
   type states — not a zero sentinel carrying two meanings.
 - Each plugin owns a first-level namespace: `Rapira\Http`, later `Rapira\Grpc`, `Rapira\Jobs`. `Rapira\`
-  holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the functions — and
+  holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the address types,
+  the functions — and
   `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's own live the same
   way, in its own `Exception\` sub-namespace — `Http\Exception\HeadAlreadyWrittenError` — one rule for
   where a throwable lives, whichever surface throws it.

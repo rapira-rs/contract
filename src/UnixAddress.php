@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Http;
+namespace Rapira;
 
 /**
  * A unix domain socket endpoint — the other arm of the address union, beside {@see InetAddress}.
