@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Rapira\Grpc;
 
+/**
+ * The closed gRPC status-code set, minus `OK`: {@see Responder::fail()} is the only consumer, a
+ * successful call is its type's `respond()`, and a type that cannot spell "failed with OK" is
+ * worth one missing case. Values are the wire numbers.
+ */
 enum StatusCode: int
 {
     case Cancelled = 1;

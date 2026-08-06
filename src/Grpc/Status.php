@@ -4,6 +4,15 @@ declare(strict_types=1);
 
 namespace Rapira\Grpc;
 
+/**
+ * The `google.rpc.Status` triple: the data an RPC fails with, taken by {@see Responder::fail()}.
+ *
+ * The host encodes it once per protocol — a serialized `google.rpc.Status` in
+ * `grpc-status-details-bin` for gRPC and gRPC-Web, structured JSON details for Connect — so everything
+ * expressible in rich gRPC errors (`RetryInfo`, `BadRequest` field violations, `ErrorInfo`, …) is
+ * expressible here. The exception layer is a thin thrower over this,
+ * {@see Exception\GrpcException::$status}.
+ */
 final readonly class Status
 {
     /**

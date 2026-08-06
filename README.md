@@ -68,7 +68,8 @@ interface DispatcherInfo
     public function activeCount(): int;
 }
 
-/** The two arms of an address: a port exists exactly when the endpoint is an IP one. */
+/** The two arms of an address: a port exists exactly when the endpoint is an IP one. Shared, since
+ *  every plugin that names a peer names it the same way. */
 final readonly class InetAddress
 {
     public function __construct(
@@ -167,7 +168,9 @@ exchange" all name this shape the same way.
 - At capacity `receive()` waits and `tryReceive()` returns null — backpressure, not an error. Same
   behaviour at one unit in flight and at N.
 - Waiting suspends the calling fiber, not the thread; outside a fiber it blocks the process, because the
-  main context cannot be suspended.
+  main context cannot be suspended. Who resumes a suspended fiber is the PHP wrapper's business, never
+  this contract's: the contract names its suspension points — `receive()`, a `MessageStream` step, a
+  streaming drain — and never names a scheduler.
 - Writing commits without promising the wire: a committed head coalesces with the first body chunk, and
   `flush()` trades the computed `content-length` away when the head must arrive first. An interim `1xx` is
   the exception the protocol itself makes and goes out at once. `send*` says the bytes come from somewhere
@@ -200,13 +203,15 @@ exchange" all name this shape the same way.
   `$headers`.
 - Addresses are the union `InetAddress|UnixAddress`, mirroring Pingora's own `SocketAddr`: a unix
   listener has no IP and its connecting peer usually no name at all, so "a port exists" is a fact the
-  type states — not a zero sentinel carrying two meanings.
-- Each plugin owns a first-level namespace: `Rapira\Http`, later `Rapira\Grpc`, `Rapira\Jobs`. `Rapira\`
+  type states — not a zero sentinel carrying two meanings. They live in `Rapira\`: HTTP and gRPC both
+  put them on their request shapes, and what plugins share, the root holds.
+- Each plugin owns a first-level namespace: `Rapira\Http`, `Rapira\Grpc`, later `Rapira\Jobs`. `Rapira\`
   holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the address types,
-  the functions — and
-  `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's own live the same
-  way, in its own `Exception\` sub-namespace — `Http\Exception\HeadAlreadyWrittenError` — one rule for
-  where a throwable lives, whichever surface throws it.
+  the functions — and `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's
+  own live the same way, in its own `Exception\` sub-namespace — `Http\Exception\HeadAlreadyWrittenError` —
+  one rule for where a throwable lives, whichever surface throws it. A family of variants lives under
+  its root's name the same way: `Grpc\Call\StreamingRequest` extends `Grpc\Call`, the directory
+  repeating the hierarchy.
 - Unfinalized units are the host's problem: it fails them and recycles the worker per pool policy.
 - Cancellation is cooperative. VM interrupts are a pool watchdog, not routine cancellation, and cannot fire
   while PHP is inside a blocking native call.
@@ -260,6 +265,181 @@ follows from that sentence:
   leaves that response alone — a compressor holding bytes back turns `flush()` into a lie, and is how
   `text/event-stream` ends up silent.
 
+## gRPC
+
+The second dispatcher surface. Host-side it is built on ConnectRPC rather than a native gRPC stack:
+one registration serves native gRPC, binary gRPC-Web and Connect — proto and JSON — selected per
+request from `Content-Type`, and none of that reaches PHP. Every request message crosses the boundary
+as the canonical binary-protobuf encoding of the method's input message — Connect-JSON is one
+descriptor-driven transcode at the edge — and the response crosses back the same way. Framing,
+per-message compression, `grpc-timeout` parsing and per-protocol error encoding are the host's job.
+Dispatch is descriptor-driven: `.proto` sources compile at boot, the `[grpc].services` entries resolve
+against them or the boot fails, and adding a PHP service method never rebuilds the host.
+
+```php
+namespace Rapira\Grpc;
+
+interface GrpcDispatcher extends \Rapira\Dispatcher
+{
+    public function tryReceive(): (Call&Responder)|null;
+
+    public function receive(int $timeout = -1): Call&Responder;
+
+    public function getInfo(): GrpcDispatcherInfo;
+
+    /** What this plugin dispatches, resolved from the descriptor registry at boot. The adapter binds
+     *  one local implementation per entry at its own boot, so a missing one fails the worker there,
+     *  by name — never as an `Unimplemented` surprise on the first live call.
+     *  @return list<ServiceInfo> */
+    public function getServices(): array;
+}
+
+/** The reading side of a call. */
+interface Call extends \Rapira\Work
+{
+    public function getContext(): Context;
+}
+
+/** The answering side. Failing lives here because every kind fails the same way; the success verb is
+ *  per axis, because its shape belongs to the method. */
+interface Responder extends \Rapira\Work
+{
+    public function getResponseMetadata(): ResponseMetadata;
+
+    public function fail(Status $status): void;
+}
+
+final readonly class Context
+{
+    public function __construct(
+        public string $method,                   // "billing.v1.InvoiceService/CreateInvoice"
+        public Metadata $metadata,               // application keys only; grpc-*, content-* never appear
+        public ?float $deadline,                 // unix timestamp; null when none. Advisory — the host enforces it
+        public InetAddress|UnixAddress $remote,  // the same union HTTP puts on Request::$remote
+        public Protocol $protocol,               // grpc | grpc-web | connect — a log field, never a branch
+        public float $receivedAt,
+    ) {}
+}
+
+/** google.rpc.Status: the triple an RPC fails with. Everything rich errors express fits in $details. */
+final readonly class Status
+{
+    public function __construct(
+        public StatusCode $code,                 // int-backed enum of the 16 error codes; no Ok case
+        public string $message = '',
+        public array $details = [],              // list<ErrorDetail> — google.protobuf.Any pairs
+    ) {}
+}
+
+/** Multivalued, keys case-insensitive, `-bin` values arriving as raw bytes — not array<string, string>. */
+final class Metadata implements \Countable, \IteratorAggregate {}
+
+/** Mutable per-call accumulator: addHeader()/addTrailer() and their -bin twins. */
+final class ResponseMetadata {}
+
+/** One forward pass over an inbound stream; iteration ends when the client half-closes. */
+final class MessageStream implements \Iterator {}
+
+enum MethodKind: string
+{
+    case Unary = 'unary';
+    case ServerStreaming = 'server-streaming';
+    case ClientStreaming = 'client-streaming';
+    case BidiStreaming = 'bidi-streaming';
+
+    public function isStreamingRequest(): bool {}
+    public function isStreamingResponse(): bool {}
+}
+```
+
+Each root forks into its two axes, and a method's calls implement the pair its `.proto` fixed:
+
+```php
+namespace Rapira\Grpc\Call;
+
+/** Unary and ServerStreaming methods: the one request message, in hand before dispatch. */
+interface UnaryRequest extends \Rapira\Grpc\Call
+{
+    public function getMessage(): string;
+}
+
+/** ClientStreaming and BidiStreaming methods: handed out on the first message, the rest arriving. */
+interface StreamingRequest extends \Rapira\Grpc\Call
+{
+    public function getMessages(): \Rapira\Grpc\MessageStream;
+}
+
+namespace Rapira\Grpc\Responder;
+
+/** Unary and ClientStreaming methods: one message finishes the call. */
+interface UnaryResponse extends \Rapira\Grpc\Responder
+{
+    public function respond(string $message): void;
+}
+
+/** ServerStreaming and BidiStreaming methods: a drained generator finishes the call. */
+interface StreamingResponse extends \Rapira\Grpc\Responder
+{
+    /** @param \Generator<int, string> $messages */
+    public function respond(\Generator $messages): void;
+}
+```
+
+The adapter's whole dispatch is two binary questions:
+
+```php
+$out = $call instanceof Call\StreamingRequest
+    ? $service->handleStream($call->getMessages())
+    : $service->handle($call->getMessage());
+
+$call instanceof Responder\StreamingResponse
+    ? $call->respond($encodeEach($out))
+    : $call->respond($out->serializeToString());
+```
+
+- The split into `Call` and `Responder` is a privilege ladder, climbed by type: `Context` grants
+  reading the data, `Call` adds the `Work` facts, `Responder` answers without reading, and `receive()`
+  hands out the intersection — the whole unit. Nothing ambient bypasses the ladder; the table below
+  has the reasoning.
+- One axis per fact, engine-checked. The response shape is the method's fact, fixed in `.proto`, so
+  `respond(string)` and `respond(\Generator)` are two interfaces rather than one union signature
+  policed at runtime. An adapter asks two binary `instanceof` questions and never branches four ways.
+  `MethodKind` is the same pair of facts before any call exists — at boot, binding services — and
+  projects onto the axes with `isStreamingRequest()`/`isStreamingResponse()`, so nobody unpacks the
+  four names by hand.
+- A streaming response is a drained generator: `respond()` returns only when the stream terminates.
+  The worker is single-threaded, so the host pumps the generator only while PHP is inside the call;
+  backpressure is the generator simply not resumed while the transport's window is closed. Running to
+  completion means `OK`; a `GrpcException` escaping mid-stream is caught at the drain and becomes the
+  terminal status; a client that went away destroys the generator — `finally` blocks run, `respond()`
+  returns normally — so ordinary cancellation needs no token API.
+- An inbound stream is one forward pass of an iterator. Its end is the client's half-close, spelled as
+  the end of iteration and never as an exception, because every stream ends. A step waits exactly as
+  `receive()` waits, and not pulling is the flow control: the host stops reading the client while
+  nothing pulls, so there is no unbounded buffer to overrun. The host closing the call mid-wait —
+  deadline, drain, a client gone without half-closing — is `WorkDiscardedException`.
+- Bidi is composition, not a feature: a response generator that reads `getMessages()` between yields —
+  a nested native wait on the same fiber. PHP is embedded in the host process, so no worker wire
+  protocol exists to extend for it: each call owns its inbound queue host-side, and routing a message
+  is enqueueing it where it is already addressed.
+- Responding while a streaming request is still arriving is legal and final — gRPC lets a server
+  answer before the client half-closes: messages not yet pulled are discarded and the host tells the
+  client to stop sending.
+- Response metadata has one home, the mutable accumulator HTTP refused — and the refusal does not
+  transfer. An HTTP head commits once and whole, so a bag there is intermediate state moved across the
+  boundary; a gRPC call commits twice — headers at the stream's first yield, trailers at its
+  termination — and the trailers accumulate while `respond()` is still draining, unreachable as any
+  finalizer parameter. Snapshots happen on success and failure alike. The accumulator rejects the
+  reserved transport namespaces (`grpc-*`, `content-*`, Connect control headers), and the `-bin`
+  discipline is spelled by method: `addBinaryHeader()` requires the suffix, `addHeader()` rejects it,
+  so the name's promise and the value's kind can never disagree.
+- A status is data, the exception a thin thrower over it — the split grpc-go and grpc-java draw.
+  `fail()` takes the `google.rpc.Status` triple, and the host encodes it once per protocol:
+  `grpc-status` trailers for gRPC, the trailer frame for gRPC-Web, an HTTP status plus error JSON for
+  Connect. Anything *not* a `GrpcException` escaping the worker is a bug, not a status: the script
+  fatals, the host answers a sanitized `INTERNAL` — trace logged server-side, message withheld — and
+  recycles the worker per pool policy.
+
 ## Exceptions
 
 `Rapira\Exception\TimeoutException` and `Rapira\Exception\ClosedException` are both caught routinely — the
@@ -287,6 +467,13 @@ failed, raised before `sendFile()` has written anything, so `404` is still on th
 client, lease lost to another worker. The worker broke no rule, so it is a runtime exception and not an
 error, and a handler catches it to log the loss. Polling `Work::isCancelled()` at checkpoints avoids
 getting there at all.
+
+`Grpc\Exception\GrpcException` is the one throwable the host itself matches on: escaping a streaming
+generator, it is caught at the drain and becomes the terminal status, framed per protocol — which is
+why the base class is contract while its curated subclasses are not. It carries its `Status` as
+`$status`, because `\Exception::$code` already exists as an untyped `int` and cannot be redeclared.
+`Grpc\Exception\HeadersAlreadyCommittedError` is `HeadAlreadyWrittenError`'s fact in gRPC spelling:
+the headers left with the stream's first yield, and only trailers stay open after it.
 
 ## Not in the contract
 
@@ -319,24 +506,28 @@ getting there at all.
 | a stream resource in place of a path on `sendFile()` | a path is the one thing the host can open by itself; a PHP resource may be `php://temp` or a userland wrapper, and reading it means going back through PHP for every chunk — exactly what the verb exists to avoid |
 | `Content-Type` sniffing on the first body write | Go guesses from the first 512 bytes because a Go handler may not know; a PHP application does, and a guessed type the browser then trusts is what `nosniff` exists to stop |
 | an optional-capability object (`http.ResponseController`) | Go needs one because `ResponseWriter` is a public interface with third-party implementations, so `Flush` arrives by type assertion; `Exchange` has a single implementation, so `flush()` sits on it |
+| `Grpc\call_context()`, an ambient accessor for the call's context | between `receive()` and finalization the host cannot see which held unit the running code serves — `tryReceive()` legally batches several onto one fiber, and processing is plain userland with no dispatch boundary the engine observes — so any host-installed slot (per process, per fiber, even a per-fiber stack) silently answers with a *different* call's deadline and metadata under a reordered batch. The SDK chooses the execution discipline, so the SDK owns the mapping: a static in a one-at-a-time loop, a `Fiber`-keyed map, a `WeakMap` from the decoded request message. The contract's spelling is `Call::getContext()`, where the type binds context to call and no order of processing can shuffle it |
+| a union `respond(string\|\Generator)` on one call type | the response shape is the method's fact, fixed in `.proto` — Connect even frames unary and streaming responses differently — so the union carries as a runtime check what the axis interfaces carry as a type |
+| `StatusCode::Ok` | `fail()` is the code's only consumer, a successful call is its type's `respond()`, and a type that cannot spell "failed with OK" is worth one missing case |
+| curated `GrpcException` subclasses — `NotFoundException`, `InvalidArgumentException`, … | one `parent::__construct()` call each, so they are SDK vocabulary; the base class is contract only because the host matches it at the stream drain |
+| `Grpc\Context::timeRemaining()` | `$deadline - microtime(true)` |
+| `MethodInfo::$fullName` | `ServiceInfo::$name . '/' . $name` |
+| timeout and `try` variants on a `MessageStream` step | additive when the first consumer needs periodic chores between messages; `$deadline` and `isCancelled()` cover the known cases |
+| per-message metadata on stream messages | gRPC has none, so there is no envelope to model — a yield is bytes, a step is bytes |
+| a cancellation token for streams | a gone client destroys the response generator, so `finally` is the structural hook; `isCancelled()` covers checkpoints |
 
 ## Open
 
-1. **Scheduler ownership.** Bare fibers give no concurrency — a fiber inside `PDO::query()` blocks the
-   thread. Either the application brings amphp/revolt, and then a natively blocking `receive()` freezes its
-   loop and the contract needs an awaitable primitive instead; or the host hooks blocking I/O and becomes
-   the scheduler, and `receive()` stands as written. This decides what an integration may do around
-   `receive()`.
-2. **Deadlines.** `isCancelled()` answers "still wanted?"; a handler budgeting its own work needs the
-   remaining time too. Cheap to add for consumers, awkward once plugins pick spellings. Go's answer is
-   `ResponseController.SetReadDeadline`/`SetWriteDeadline` — the handler sets a deadline rather than reading
-   what is left of one.
-3. **Non-dispatcher plugins.** A logger richer than `log()` — its own target, its own sink — or a KV
+1. **Deadlines on HTTP.** gRPC picked the spelling: `Grpc\Context::$deadline`, a unix timestamp the
+   handler subtracts from — advisory, since the host enforces it regardless. What stays open is HTTP's
+   side: whether `Http\Request` grows the same field, and whether a handler may ever *set* a deadline
+   (Go's `ResponseController.SetReadDeadline`/`SetWriteDeadline`) rather than read what is left of one.
+2. **Non-dispatcher plugins.** A logger richer than `log()` — its own target, its own sink — or a KV
    client is not a stream of work units and needs a second acquisition path, without bringing back
    config objects.
-4. **Superglobal hydration** as an explicit call on the unit, so the PSR path does not pay for globals it
+3. **Superglobal hydration** as an explicit call on the unit, so the PSR path does not pay for globals it
    never reads.
-5. **Large raw bodies — `SpooledBody`.** Multipart is answered by `Multipart::$files`, but a large `PUT`
+4. **Large raw bodies — `SpooledBody`.** Multipart is answered by `Multipart::$files`, but a large `PUT`
    of raw bytes is still bounded by what a worker holds, and the host's body limit belongs below
    `memory_limit`. The shape is decided: a third arm of the body union, `string|Multipart|SpooledBody`,
    where `SpooledBody` carries one `non-empty-string $path` — the host spools past a `rapira.toml`
@@ -344,12 +535,12 @@ getting there at all.
    path in the string arm, because a path in `$body` would be unreadable as one. It waits for a
    consumer: the threshold and which requests spool are host config surface not worth designing before
    the first real use, and widening a union is cheap only while nobody `match`es it exhaustively.
-6. **Which filesystem root `sendFile()` may read from.** The host opens the path, so `open_basedir` does
+5. **Which filesystem root `sendFile()` may read from.** The host opens the path, so `open_basedir` does
    not apply and user input passed through names any file the server process can read. A root belongs in
    `rapira.toml`, and it wants to exist before the first traversal rather than after one. Zero-copy is a
    separate and later question: Pingora has no `sendfile(2)` path today, and terminating TLS in process
    rules the syscall out regardless.
-7. **`writeTrailers()` is provisional**, pending a team call. For it: RFC 9530 dedicates a worked example
+6. **`writeTrailers()` is provisional**, pending a team call. For it: RFC 9530 dedicates a worked example
    to `Trailer: Repr-Digest` — a standard spelling for the one case the method serves — and Go, Node,
    Servlet 4.0, Envoy, nginx and HAProxy all implement or pass trailers, as proxying gRPC requires.
    Against: browsers never expose them to JavaScript, and neither PSR-7 nor HttpFoundation has a vocabulary
