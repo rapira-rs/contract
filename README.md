@@ -211,7 +211,10 @@ exchange" all name this shape the same way.
   own live the same way, in its own `Exception\` sub-namespace — `Http\Exception\HeadAlreadyWrittenError` —
   one rule for where a throwable lives, whichever surface throws it. A family of variants lives under
   its root's name the same way: `Grpc\Call\StreamingRequest` extends `Grpc\Call`, the directory
-  repeating the hierarchy.
+  repeating the hierarchy. So do the shapes only that root hands out — `Grpc\Call\Context` exists
+  through `Call::getContext()` and nothing else — while what worker code constructs itself, `Status`
+  and the boot-time descriptors, stays at the plugin root: the directory answers who gives you the
+  object.
 - Unfinalized units are the host's problem: it fails them and recycles the worker per pool policy.
 - Cancellation is cooperative. VM interrupts are a pool watchdog, not routine cancellation, and cannot fire
   while PHP is inside a blocking native call.
@@ -297,28 +300,16 @@ interface GrpcDispatcher extends \Rapira\Dispatcher
 /** The reading side of a call. */
 interface Call extends \Rapira\Work
 {
-    public function getContext(): Context;
+    public function getContext(): Call\Context;
 }
 
 /** The answering side. Failing lives here because every kind fails the same way; the success verb is
  *  per axis, because its shape belongs to the method. */
 interface Responder extends \Rapira\Work
 {
-    public function getResponseMetadata(): ResponseMetadata;
+    public function getResponseMetadata(): Responder\ResponseMetadata;
 
     public function fail(Status $status): void;
-}
-
-final readonly class Context
-{
-    public function __construct(
-        public string $method,                   // "billing.v1.InvoiceService/CreateInvoice"
-        public Metadata $metadata,               // application keys only; grpc-*, content-* never appear
-        public ?float $deadline,                 // unix timestamp; null when none. Advisory — the host enforces it
-        public InetAddress|UnixAddress $remote,  // the same union HTTP puts on Request::$remote
-        public Protocol $protocol,               // grpc | grpc-web | connect — a log field, never a branch
-        public float $receivedAt,
-    ) {}
 }
 
 /** google.rpc.Status: the triple an RPC fails with. Everything rich errors express fits in $details. */
@@ -330,15 +321,6 @@ final readonly class Status
         public array $details = [],              // list<ErrorDetail> — google.protobuf.Any pairs
     ) {}
 }
-
-/** Multivalued, keys case-insensitive, `-bin` values arriving as raw bytes — not array<string, string>. */
-final class Metadata implements \Countable, \IteratorAggregate {}
-
-/** Mutable per-call accumulator: addHeader()/addTrailer() and their -bin twins. */
-final class ResponseMetadata {}
-
-/** One forward pass over an inbound stream; iteration ends when the client half-closes. */
-final class MessageStream implements \Iterator {}
 
 enum MethodKind: string
 {
@@ -352,7 +334,8 @@ enum MethodKind: string
 }
 ```
 
-Each root forks into its two axes, and a method's calls implement the pair its `.proto` fixed:
+Each root forks into its two axes, a method's calls implement the pair its `.proto` fixed, and the
+shapes a root hands out live under its name:
 
 ```php
 namespace Rapira\Grpc\Call;
@@ -366,8 +349,27 @@ interface UnaryRequest extends \Rapira\Grpc\Call
 /** ClientStreaming and BidiStreaming methods: handed out on the first message, the rest arriving. */
 interface StreamingRequest extends \Rapira\Grpc\Call
 {
-    public function getMessages(): \Rapira\Grpc\MessageStream;
+    public function getMessages(): MessageStream;
 }
+
+/** From Call::getContext(): the request side, whole and immutable. */
+final readonly class Context
+{
+    public function __construct(
+        public string $method,                   // "billing.v1.InvoiceService/CreateInvoice"
+        public Metadata $metadata,               // application keys only; grpc-*, content-* never appear
+        public ?float $deadline,                 // unix timestamp; null when none. Advisory — the host enforces it
+        public InetAddress|UnixAddress $remote,  // the same union HTTP puts on Request::$remote
+        public Protocol $protocol,               // grpc | grpc-web | connect — a log field, never a branch
+        public float $receivedAt,
+    ) {}
+}
+
+/** Multivalued, keys case-insensitive, `-bin` values arriving as raw bytes — not array<string, string>. */
+final class Metadata implements \Countable, \IteratorAggregate {}
+
+/** One forward pass over an inbound stream; iteration ends when the client half-closes. */
+final class MessageStream implements \Iterator {}
 
 namespace Rapira\Grpc\Responder;
 
@@ -383,6 +385,9 @@ interface StreamingResponse extends \Rapira\Grpc\Responder
     /** @param \Generator<int, string> $messages */
     public function respond(\Generator $messages): void;
 }
+
+/** Mutable per-call accumulator: addHeader()/addTrailer() and their -bin twins. */
+final class ResponseMetadata {}
 ```
 
 The adapter's whole dispatch is two binary questions:
@@ -510,7 +515,7 @@ the headers left with the stream's first yield, and only trailers stay open afte
 | a union `respond(string\|\Generator)` on one call type | the response shape is the method's fact, fixed in `.proto` — Connect even frames unary and streaming responses differently — so the union carries as a runtime check what the axis interfaces carry as a type |
 | `StatusCode::Ok` | `fail()` is the code's only consumer, a successful call is its type's `respond()`, and a type that cannot spell "failed with OK" is worth one missing case |
 | curated `GrpcException` subclasses — `NotFoundException`, `InvalidArgumentException`, … | one `parent::__construct()` call each, so they are SDK vocabulary; the base class is contract only because the host matches it at the stream drain |
-| `Grpc\Context::timeRemaining()` | `$deadline - microtime(true)` |
+| `Grpc\Call\Context::timeRemaining()` | `$deadline - microtime(true)` |
 | `MethodInfo::$fullName` | `ServiceInfo::$name . '/' . $name` |
 | timeout and `try` variants on a `MessageStream` step | additive when the first consumer needs periodic chores between messages; `$deadline` and `isCancelled()` cover the known cases |
 | per-message metadata on stream messages | gRPC has none, so there is no envelope to model — a yield is bytes, a step is bytes |
@@ -518,7 +523,7 @@ the headers left with the stream's first yield, and only trailers stay open afte
 
 ## Open
 
-1. **Deadlines on HTTP.** gRPC picked the spelling: `Grpc\Context::$deadline`, a unix timestamp the
+1. **Deadlines on HTTP.** gRPC picked the spelling: `Grpc\Call\Context::$deadline`, a unix timestamp the
    handler subtracts from — advisory, since the host enforces it regardless. What stays open is HTTP's
    side: whether `Http\Request` grows the same field, and whether a handler may ever *set* a deadline
    (Go's `ResponseController.SetReadDeadline`/`SetWriteDeadline`) rather than read what is left of one.

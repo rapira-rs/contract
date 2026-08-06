@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Grpc;
+namespace Rapira\Grpc\Call;
 
 /**
  * The protocol a call arrived over, on {@see Context::$protocol}. Diagnostic only: the host normalizes

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Grpc;
+namespace Rapira\Grpc\Call;
 
 /**
  * Request metadata as gRPC defines it, on {@see Context::$metadata}: multivalued, keys

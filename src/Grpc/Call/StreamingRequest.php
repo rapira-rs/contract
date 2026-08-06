@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Rapira\Grpc\Call;
 
 use Rapira\Grpc\Call;
-use Rapira\Grpc\MessageStream;
 use Rapira\Grpc\MethodKind;
 
 /**

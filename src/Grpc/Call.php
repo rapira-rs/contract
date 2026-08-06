@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rapira\Grpc;
 
+use Rapira\Grpc\Call\Context;
 use Rapira\Work;
 
 /**

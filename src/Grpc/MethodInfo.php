@@ -12,7 +12,7 @@ final readonly class MethodInfo
 {
     /**
      * @param non-empty-string $name Bare method name, `CreateInvoice`; the full name on
-     *        {@see Context::$method} is `{ServiceInfo::$name}/{$name}`.
+     *        {@see Call\Context::$method} is `{ServiceInfo::$name}/{$name}`.
      * @param non-empty-string $inputType Fully qualified message name, `billing.v1.CreateInvoiceRequest`.
      * @param non-empty-string $outputType Fully qualified message name, `billing.v1.Invoice`.
      */
