@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Grpc;
+namespace Rapira\Grpc\Responder;
 
 use Rapira\Exception\AlreadyFinalizedError;
+use Rapira\Grpc\Call\Metadata;
 use Rapira\Grpc\Exception\HeadersAlreadyCommittedError;
+use Rapira\Grpc\Responder;
 
 /**
  * Per-call accumulator for response headers and trailers, from {@see Responder::getResponseMetadata()}.

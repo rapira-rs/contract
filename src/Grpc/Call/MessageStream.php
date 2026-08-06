@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Grpc;
+namespace Rapira\Grpc\Call;
 
 use Rapira\Exception\WorkDiscardedException;
 
 /**
- * The request messages of one {@see Call\StreamingRequest} call, in arrival order: a single forward pass that ends
+ * The request messages of one {@see StreamingRequest} call, in arrival order: a single forward pass that ends
  * when the client half-closes — the normal end of every inbound stream, spelled as the end of
  * iteration, never as an exception.
  *
@@ -29,7 +29,7 @@ final class MessageStream implements \Iterator
 {
     /**
      * The current message: the canonical binary-protobuf encoding of the method's input message,
-     * whatever the client spoke, exactly as {@see Call\UnaryRequest::getMessage()} has it.
+     * whatever the client spoke, exactly as {@see UnaryRequest::getMessage()} has it.
      */
     public function current(): string {}
 

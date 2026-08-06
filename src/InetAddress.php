@@ -6,7 +6,7 @@ namespace Rapira;
 
 /**
  * An IP endpoint of a connection — one arm of the address union plugins put on their request shapes
- * ({@see \Rapira\Http\Request::$remote}, {@see \Rapira\Grpc\Context::$remote}); the other arm is
+ * ({@see \Rapira\Http\Request::$remote}, {@see \Rapira\Grpc\Call\Context::$remote}); the other arm is
  * {@see UnixAddress}. The union is why there is no zero sentinel: a port exists exactly when the
  * endpoint is an IP one.
  */

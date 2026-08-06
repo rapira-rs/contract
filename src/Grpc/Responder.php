@@ -6,6 +6,7 @@ namespace Rapira\Grpc;
 
 use Rapira\Exception\AlreadyFinalizedError;
 use Rapira\Exception\WorkDiscardedException;
+use Rapira\Grpc\Responder\ResponseMetadata;
 use Rapira\Work;
 
 /**
