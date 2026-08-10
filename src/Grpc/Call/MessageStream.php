@@ -25,19 +25,19 @@ use Rapira\Exception\WorkDiscardedException;
  * // the client half-closed; time to respond
  * ```
  */
-final class MessageStream implements \Iterator
+interface MessageStream extends \Iterator
 {
     /**
      * The current message: the canonical binary-protobuf encoding of the method's input message,
      * whatever the client spoke, exactly as {@see UnaryRequest::getMessage()} has it.
      */
-    public function current(): string {}
+    public function current(): string;
 
     /** @return int<0, max> Zero-based index of the current message. */
-    public function key(): int {}
+    public function key(): int;
 
     /** Discard the current message. Returns at once; {@see self::valid()} is where the wait lives. */
-    public function next(): void {}
+    public function next(): void;
 
     /**
      * Whether a message is here — waiting, per the semantics above, until it can answer: a message
@@ -47,12 +47,12 @@ final class MessageStream implements \Iterator
      *         gone without half-closing, worker draining. Half-close is not this — it is the stream's
      *         normal end.
      */
-    public function valid(): bool {}
+    public function valid(): bool;
 
     /**
      * A no-op before the first advance, so `foreach` works; the stream cannot restart.
      *
      * @throws \Error Already advanced — the same rule {@see \Generator::rewind()} enforces.
      */
-    public function rewind(): void {}
+    public function rewind(): void;
 }

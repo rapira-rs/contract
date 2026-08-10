@@ -226,6 +226,9 @@ exchange" all name this shape the same way.
   while PHP is inside a blocking native call.
 - Interface members are methods, not hooked properties — internal classes cannot declare hooks, and the stub
   generator has no syntax for them.
+- Behaviour is an interface, data is a final readonly class with a public constructor. So every type is
+  either mockable or constructible, and a test never needs the host: a fake `StreamingRequest` returns an
+  array-backed `MessageStream`, a fixture `Context` carries a `new Metadata([...])`.
 - The consumer is Rapira's SDK, not application code. Test for any addition: could the SDK compute it
   itself? Then it does not belong here.
 - Interfaces state behaviour, not the reasoning behind it. Why something is shaped the way it is, or absent,
@@ -330,7 +333,11 @@ final readonly class Status
 
 /** Multivalued, keys case-insensitive, `-bin` values arriving as raw bytes — not array<string, string>.
  *  Both sides hand it out: Call\Context::$metadata, and the accumulator's headers()/trailers() snapshots. */
-final class Metadata implements \Countable, \IteratorAggregate {}
+final readonly class Metadata implements \Countable, \IteratorAggregate
+{
+    /** @param array<lowercase-string&non-empty-string, list<string>> $entries */
+    public function __construct(public array $entries = []) {}
+}
 
 enum MethodKind: string
 {
@@ -376,7 +383,7 @@ final readonly class Context
 }
 
 /** One forward pass over an inbound stream; iteration ends when the client half-closes. */
-final class MessageStream implements \Iterator {}
+interface MessageStream extends \Iterator {}
 
 namespace Rapira\Grpc\Responder;
 
@@ -394,7 +401,7 @@ interface StreamingResponse extends \Rapira\Grpc\Responder
 }
 
 /** Mutable per-call accumulator: addHeader()/addTrailer() and their -bin twins. */
-final class ResponseMetadata {}
+interface ResponseMetadata {}
 ```
 
 The adapter's whole dispatch is two binary questions:
