@@ -32,7 +32,7 @@ use Rapira\Grpc\Responder;
  * $metadata->addHeader('grpc-status', '0');        // \ValueError: reserved transport namespace
  * ```
  */
-final class ResponseMetadata
+interface ResponseMetadata
 {
     /**
      * Add a response header. Repeating a name adds a value, never replaces one.
@@ -45,7 +45,7 @@ final class ResponseMetadata
      * @throws \ValueError The name is reserved, carries the `-bin` suffix — that suffix promises
      *         binary, {@see self::addBinaryHeader()} keeps the promise — or the value is not ASCII.
      */
-    public function addHeader(string $name, string $value): void {}
+    public function addHeader(string $name, string $value): void;
 
     /**
      * Add a binary response header. Same rules as {@see self::addHeader()}, except the name must carry
@@ -57,7 +57,7 @@ final class ResponseMetadata
      * @throws AlreadyFinalizedError
      * @throws \ValueError The name is reserved or lacks the `-bin` suffix.
      */
-    public function addBinaryHeader(string $name, string $bytes): void {}
+    public function addBinaryHeader(string $name, string $bytes): void;
 
     /**
      * Add a response trailer. Same rules as {@see self::addHeader()}, but trailers stay open for the
@@ -68,7 +68,7 @@ final class ResponseMetadata
      * @throws AlreadyFinalizedError The call was already finalized.
      * @throws \ValueError As {@see self::addHeader()}.
      */
-    public function addTrailer(string $name, string $value): void {}
+    public function addTrailer(string $name, string $value): void;
 
     /**
      * Add a binary response trailer. Same rules as {@see self::addBinaryHeader()}, same lifetime as
@@ -78,11 +78,11 @@ final class ResponseMetadata
      * @throws AlreadyFinalizedError
      * @throws \ValueError
      */
-    public function addBinaryTrailer(string $name, string $bytes): void {}
+    public function addBinaryTrailer(string $name, string $bytes): void;
 
     /** What has been accumulated so far, headers half. */
-    public function headers(): Metadata {}
+    public function headers(): Metadata;
 
     /** What has been accumulated so far, trailers half. */
-    public function trailers(): Metadata {}
+    public function trailers(): Metadata;
 }
