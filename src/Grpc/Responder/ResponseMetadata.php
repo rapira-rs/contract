@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Rapira\Grpc\Responder;
 
 use Rapira\Exception\AlreadyFinalizedError;
-use Rapira\Grpc\Call\Metadata;
 use Rapira\Grpc\Exception\HeadersAlreadyCommittedError;
+use Rapira\Grpc\Metadata;
 use Rapira\Grpc\Responder;
 
 /**
