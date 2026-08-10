@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Grpc\Call;
+namespace Rapira\Grpc;
 
 /**
- * Request metadata as gRPC defines it, on {@see Context::$metadata}: multivalued, keys
- * case-insensitive ASCII, `-bin` keys carrying binary. A flat string map would silently lose
- * duplicates and leave binary values ambiguous, which is why this is not `array<string, string>`.
+ * Metadata as gRPC defines it: multivalued, keys case-insensitive ASCII, `-bin` keys carrying
+ * binary. A flat string map would silently lose duplicates and leave binary values ambiguous,
+ * which is why this is not `array<string, string>`. Both sides hand it out: the request's on
+ * {@see Call\Context::$metadata}, the response halves as {@see Responder\ResponseMetadata}
+ * snapshots.
  *
  * Immutable. Values of `-bin` keys arrive decoded to raw bytes — base64, padded or not, is the
  * boundary's job per the gRPC spec.

@@ -328,6 +328,10 @@ final readonly class Status
     ) {}
 }
 
+/** Multivalued, keys case-insensitive, `-bin` values arriving as raw bytes — not array<string, string>.
+ *  Both sides hand it out: Call\Context::$metadata, and the accumulator's headers()/trailers() snapshots. */
+final class Metadata implements \Countable, \IteratorAggregate {}
+
 enum MethodKind: string
 {
     case Unary = 'unary';
@@ -363,16 +367,13 @@ final readonly class Context
 {
     public function __construct(
         public string $method,                   // "billing.v1.InvoiceService/CreateInvoice"
-        public Metadata $metadata,               // application keys only; grpc-*, content-* never appear
+        public \Rapira\Grpc\Metadata $metadata,  // application keys only; grpc-*, content-* never appear
         public ?float $deadline,                 // unix timestamp; null when none. Advisory — the host enforces it
         public InetAddress|UnixAddress $remote,  // the same union HTTP puts on Request::$remote
         public Protocol $protocol,               // grpc | grpc-web | connect — a log field, never a branch
         public float $receivedAt,
     ) {}
 }
-
-/** Multivalued, keys case-insensitive, `-bin` values arriving as raw bytes — not array<string, string>. */
-final class Metadata implements \Countable, \IteratorAggregate {}
 
 /** One forward pass over an inbound stream; iteration ends when the client half-closes. */
 final class MessageStream implements \Iterator {}

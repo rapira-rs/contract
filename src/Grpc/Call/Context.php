@@ -6,6 +6,7 @@ namespace Rapira\Grpc\Call;
 
 use Rapira\Grpc\Call;
 use Rapira\Grpc\GrpcDispatcher;
+use Rapira\Grpc\Metadata;
 use Rapira\Grpc\Responder\ResponseMetadata;
 use Rapira\InetAddress;
 use Rapira\UnixAddress;
