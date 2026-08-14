@@ -118,6 +118,8 @@ interface Exchange extends Work
      * @param int<1, max>|null $length Bytes to send; null sends the rest of the file.
      * @param bool $eos Ends the response and finalizes the exchange, as in {@see self::writeBody()}.
      * @throws FileNotSendableException The host cannot send it. Raised before this call writes anything.
+     * @throws ContentLengthExceededError The bytes this call would send go past the `content-length`
+     *         the head declared. Raised before this call writes anything.
      * @throws AlreadyFinalizedError The response already ended.
      * @throws WorkDiscardedException The host closed the exchange first.
      * @throws \ValueError $offset is negative, or $length is zero or negative.
