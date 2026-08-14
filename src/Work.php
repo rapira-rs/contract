@@ -10,9 +10,9 @@ namespace Rapira;
  * Instances come from the host, never from `new`. The finalizing verbs live on the concrete type —
  * HTTP writes a body, gRPC responds or fails, jobs completes or retries.
  *
- * Every unit must be finalized exactly once. Twice throws {@see Exception\AlreadyFinalizedError}; not
- * at all leaves it to the host, which fails the unit and recycles the worker. If the host closed the
- * unit first, finalizing throws {@see Exception\WorkDiscardedException}.
+ * Every unit must be finalized exactly once. Twice throws {@see Exception\AlreadyFinalizedError}; a unit
+ * dropped unfinalized is caught by {@see self::__destruct()} and failed by the host. If the host closed
+ * the unit first, finalizing throws {@see Exception\WorkDiscardedException}.
  */
 interface Work
 {
@@ -26,4 +26,15 @@ interface Work
      * Cooperative — nothing interrupts a handler, so long work asks at its own checkpoints.
      */
     public function isCancelled(): bool;
+
+    /**
+     * Safety net: dropping the last reference to an unfinalized unit reports the loss to the host,
+     * which fails it — HTTP answers 500, gRPC ends with INTERNAL, a job goes to fail or retry per
+     * queue policy. Does nothing when the unit is already finalized or discarded.
+     *
+     * A lost unit is always a failure, never an implicit response — and a late one: objects held in
+     * reference cycles wait for the cycle collector, and a fatal error skips destructors entirely,
+     * leaving the loss to the host's own deadline.
+     */
+    public function __destruct();
 }
