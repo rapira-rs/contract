@@ -15,6 +15,17 @@ function get_version(): string
 }
 
 /**
+ * The mode Rapira is running this process in.
+ *
+ * Fixed for the life of the process: the host settles it at launch from `[pool] mode`, and nothing
+ * moves a running process between modes. Unlike {@see get_dispatcher()} it answers in every mode,
+ * {@see Mode::Classic} included — reading the mode is how code tells whether asking for a dispatcher
+ * would even be valid.
+ */
+function get_mode(): Mode
+{}
+
+/**
  * Get the current dispatcher instance.
  * Returns the same instance for the life of the process.
  *
