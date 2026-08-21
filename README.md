@@ -5,17 +5,21 @@ PHP is embedded in the server process — no FastCGI, no sockets, no serializati
 types that boundary speaks; the extension provides the objects.
 
 Requires PHP 8.4 — the extension's floor; the stubs themselves use nothing newer than 8.2. Execution
-modes form a ladder: `Classic` runs a script per request and has no dispatcher, `SAPI Worker` is a
-long-lived process pulling units of work through this contract, `Async Worker` runs several units
-concurrently on fibers. Everything below lives on the worker rungs.
+modes form a ladder — `Rapira\Mode`, read back at runtime from `get_mode()`: `Classic` boots the
+script per request, `Worker` boots it once and serves requests one after another through the SAPI
+superglobals, `Dispatcher` takes requests as units of work through this contract — one at a time or
+concurrently on fibers. Only `Dispatcher` mode has a dispatcher; everything below lives on that rung.
 
 ## Contract
 
 ```php
 namespace Rapira;
 
-/** Throws Exception\NotInWorkerModeError outside worker mode. Same instance for the life of the process. */
+/** Throws Exception\NoDispatcherError outside Dispatcher mode. Same instance for the life of the process. */
 function get_dispatcher(): Dispatcher {}
+
+/** The mode the host launched this process in. Fixed for the life of the process. */
+function get_mode(): Mode {}
 
 /** Version of the running Rapira server. */
 function get_version(): string {}
@@ -25,6 +29,8 @@ function log(string $message, LogLevel $level = LogLevel::Info, array $context =
 
 /** No backing values; a PSR-3 bridge squashes eight levels into these five. */
 enum LogLevel { case Error; case Warning; case Info; case Debug; case Trace; }
+
+enum Mode { case Classic; case Worker; case Dispatcher; }
 
 interface Dispatcher
 {
@@ -272,7 +278,7 @@ the top of the worker, never a handler's.
 `AlreadyFinalizedError` extends `\Error` — nobody catches it, the script fatals, the host cleans up. Not
 `\LogicException`, which frameworks catch broadly enough to swallow it. The error/exception split is left
 to the native hierarchy, so `instanceof \Error` keeps meaning "your code is wrong" and no second marker is
-needed for it. `NotInWorkerModeError` is the same shape: a worker script running where no dispatcher
+needed for it. `NoDispatcherError` is the same shape: a worker script running where no dispatcher
 exists is wrong by construction.
 
 `Http\Exception\ContentLengthExceededError` and `Http\Exception\HeadAlreadyWrittenError` are both `\Error`
