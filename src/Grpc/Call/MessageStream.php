@@ -4,63 +4,75 @@ declare(strict_types=1);
 
 namespace Rapira\Grpc\Call;
 
+use Rapira\Dispatcher;
+use Rapira\Exception\ClosedException;
+use Rapira\Exception\TimeoutException;
 use Rapira\Exception\WorkDiscardedException;
 
 /**
- * The request messages of one {@see StreamingRequest} call, in arrival order: a single forward pass that ends
- * when the client half-closes — the normal end of every inbound stream, spelled as the end of
- * iteration, never as an exception.
- *
- * Advancing waits the way {@see \Rapira\Dispatcher::receive()} does: inside a fiber it suspends the
- * fiber, not the thread; outside one it blocks the process. Not advancing is the backpressure — the
- * host stops reading the client while nothing here is pulled, and the transport's flow-control window
- * does the rest. There is no unbounded buffer to overrun.
+ * The request messages of one {@see StreamingRequest} call, in arrival order: {@see Dispatcher}
+ * vocabulary at message grain. `next()` waits, `tryNext()` polls, and the client's half-close — the
+ * normal end of every inbound stream — is {@see ClosedException}, so the message loop is the worker
+ * loop's shape one level down:
  *
  * ```php
- * foreach ($call->getMessages() as $bytes) {
- *     $in = new UploadChunk();
- *     $in->mergeFromString($bytes);
- *     // ...
+ * try {
+ *     while (true) {
+ *         $in = new UploadChunk();
+ *         $in->mergeFromString($stream->next());
+ *         // ...
+ *     }
+ * } catch (ClosedException) {
+ *     // the client half-closed; time to respond
  * }
- * // the client half-closed; time to respond
  * ```
+ *
+ * Not pulling is the backpressure: the host stops reading the client while nothing here is pulled,
+ * and the transport's flow-control window does the rest — there is no unbounded buffer to overrun.
  */
-interface MessageStream extends \Iterator
+interface MessageStream extends \IteratorAggregate
 {
     /**
-     * The current message: the canonical binary-protobuf encoding of the method's input message,
-     * whatever the client spoke, exactly as {@see UnaryRequest::getMessage()} has it.
+     * Wait up to $timeout for the next message, with {@see Dispatcher::receive()}'s waiting
+     * semantics: inside a fiber it suspends the fiber, not the thread; outside one it blocks the
+     * process.
      *
-     * @throws \Error Outside a valid position — before {@see self::valid()} first answered, or after
-     *         it answered false. Reading past the end is wrong code, not an empty value.
+     * @param int<-1, max> $timeout Microseconds to wait; -1 waits indefinitely, 0 does not wait at
+     *        all and throws {@see TimeoutException} at once when nothing has arrived — unlike
+     *        {@see self::tryNext()}, which returns null for that.
+     * @return string The canonical binary-protobuf encoding of the method's input message, whatever
+     *         the client spoke, exactly as {@see UnaryRequest::getMessage()} has it.
+     * @throws TimeoutException No message arrived within $timeout. Never the stream's end — that is
+     *         {@see ClosedException}.
+     * @throws ClosedException The client half-closed: no more messages will ever arrive — the
+     *         stream's normal end, and every later call throws it again.
+     * @throws WorkDiscardedException The host closed the call: deadline passed, client gone without
+     *         half-closing, worker draining. Half-close is not this — it is the stream's normal end.
      */
-    public function current(): string;
+    public function next(int $timeout = -1): string;
 
     /**
-     * @return int<0, max> Zero-based index of the current message.
-     * @throws \Error Outside a valid position, as {@see self::current()}.
+     * Take a message if one has already arrived. Never waits.
+     *
+     * @return string|null Null means nothing has arrived at this moment; the stream may fill again.
+     *         A message, null and {@see ClosedException} are the three answers — open with a fact,
+     *         open and empty, ended — so polling liveness needs no method of its own.
+     * @throws ClosedException The client half-closed, as {@see self::next()}.
+     * @throws WorkDiscardedException The host closed the call, as {@see self::next()}.
      */
-    public function key(): int;
-
-    /** Discard the current message. Returns at once; {@see self::valid()} is where the wait lives. */
-    public function next(): void;
+    public function tryNext(): ?string;
 
     /**
-     * Whether a message is here — waiting, per the semantics above, until it can answer: a message
-     * arrived (true) or the client half-closed (false). The wait lives here and not in
-     * {@see self::next()} because `foreach` asks this first, so the loop body only ever sees a message
-     * that exists.
+     * The stream as an `iterable` — `next(-1)` in a loop, ending at the half-close. It is contract
+     * because being iterable is a type-level fact no wrapper can add: a `stream Chunk` parameter
+     * typed `iterable` takes the stream itself.
      *
-     * @throws WorkDiscardedException The host closed the call while waiting: deadline passed, client
-     *         gone without half-closing, worker draining. Half-close is not this — it is the stream's
-     *         normal end.
-     */
-    public function valid(): bool;
-
-    /**
-     * A no-op before the first advance, so `foreach` works; the stream cannot restart.
+     * A view, never a copy: iteration advances the same shared cursor, so `break` then
+     * {@see self::tryNext()} continues where the loop stopped, and a second call iterates the
+     * remainder. {@see WorkDiscardedException} escapes the iteration as it escapes `next()`;
+     * {@see TimeoutException} never does — the wait is indefinite.
      *
-     * @throws \Error Already advanced — the same rule {@see \Generator::rewind()} enforces.
+     * @return \Traversable<mixed, string> Yields messages; keys carry no promise.
      */
-    public function rewind(): void;
+    public function getIterator(): \Traversable;
 }

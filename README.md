@@ -231,7 +231,8 @@ exchange" all name this shape the same way.
   either mockable or constructible, and a test never needs the host: a fake `StreamingRequest` returns an
   array-backed `MessageStream`, a fixture `Context` carries a `new Metadata([...])`.
 - The consumer is Rapira's SDK, not application code. Test for any addition: could the SDK compute it
-  itself? Then it does not belong here.
+  itself? Then it does not belong here — unless the fact lives in the type system: an SDK can wrap
+  `next()` into an iterable value, but only `MessageStream` itself can pass an `iterable` parameter.
 - Interfaces state behaviour, not the reasoning behind it. Why something is shaped the way it is, or absent,
   is recorded here.
 
@@ -384,8 +385,13 @@ final readonly class Context
     ) {}
 }
 
-/** One forward pass over an inbound stream; iteration ends when the client half-closes. */
-interface MessageStream extends \Iterator {}
+/** One forward pass over an inbound stream: Dispatcher vocabulary at message grain. */
+interface MessageStream extends \IteratorAggregate
+{
+    public function next(int $timeout = -1): string; // TimeoutException; ClosedException = half-close
+    public function tryNext(): ?string;              // null = nothing at this moment
+    public function getIterator(): \Traversable;     // next(-1) as an iterable, ends at half-close
+}
 
 namespace Rapira\Grpc\Responder;
 
@@ -437,11 +443,16 @@ $call instanceof Responder\StreamingResponse
   alive. The host closing the call — deadline, client gone, drain — is `WorkDiscardedException`
   thrown into the generator at its yield, never a destroy: catch it to salvage progress or let it
   fly, `finally` runs by ordinary unwinding either way, so cancellation needs no token API.
-- An inbound stream is one forward pass of an iterator. Its end is the client's half-close, spelled as
-  the end of iteration and never as an exception, because every stream ends. A step waits exactly as
-  `receive()` waits, and not pulling is the flow control: the host stops reading the client while
-  nothing pulls, so there is no unbounded buffer to overrun. The host closing the call mid-wait —
-  deadline, drain, a client gone without half-closing — is `WorkDiscardedException`.
+- An inbound stream speaks the dispatcher's vocabulary at message grain: `next($timeout)` waits the
+  way `receive()` waits, `tryNext()` polls the way `tryReceive()` polls, and the client's half-close —
+  the normal end of every inbound stream — is `ClosedException`, so the message loop is the worker
+  loop's shape one level down. Liveness is spelled at the pull, race-free: a message, null and
+  `ClosedException` are the three answers. Not pulling is the flow control: the host stops reading the
+  client while nothing pulls, so there is no unbounded buffer to overrun. The host closing the call
+  mid-wait — deadline, drain, a client gone without half-closing — is `WorkDiscardedException`. The
+  stream is also the package's one `iterable`: `getIterator()` — a view over the same shared cursor,
+  `next(-1)` to the half-close — is contract because being iterable is a type-level fact no SDK
+  wrapper can add, so a `stream Chunk` parameter typed `iterable` takes the stream itself.
 - Bidi is composition, not a feature: a response generator that reads `getMessages()` between yields —
   a nested native wait on the same fiber. PHP is embedded in the host process, so no worker wire
   protocol exists to extend for it: each call owns its inbound queue host-side, and routing a message
@@ -539,7 +550,8 @@ the headers left with the stream's first yield, and only trailers stay open afte
 | curated `GrpcException` subclasses — `NotFoundException`, `InvalidArgumentException`, … | one `parent::__construct()` call each, so they are SDK vocabulary; the base class is contract only so that every SDK and library throws one spelling for one adapter catch |
 | `Grpc\Call\Context::timeRemaining()` | `$deadline - microtime(true)` |
 | `MethodInfo::$fullName` | `ServiceInfo::$name . '/' . $name` |
-| timeout and `try` variants on a `MessageStream` step | additive when the first consumer needs periodic chores between messages; `$deadline` and `isCancelled()` cover the known cases |
+| `isAlive()` / `getStatus()` on `MessageStream` | liveness is spelled at the pull: `tryNext()` answers open-with-a-message, open-and-empty or ended without blocking, and `isCancelled()` is the checkpoint. A status checked before the verb is stale by the time the verb runs |
+| queue depth on `MessageStream` | the buffer is the transport's flow-control window, sized in bytes, so a message count is not a fact the host owns; the batch case is a `tryNext()` loop, exact where a count races |
 | `Metadata::has()` | `values($k) !== []`, computed in place |
 | per-message metadata on stream messages | gRPC has none, so there is no envelope to model — a yield is bytes, a step is bytes |
 | a cancellation token for streams | closure is thrown into the response generator as `WorkDiscardedException`, so `catch` and `finally` are the structural hooks; `isCancelled()` covers checkpoints |
