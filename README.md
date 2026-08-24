@@ -434,8 +434,9 @@ $call instanceof Responder\StreamingResponse
   completion means `OK`; a throwable escaping the generator escapes `respond()` unchanged with the
   call left unfinalized, so the adapter's one catch — `$call->fail($e->status)` — serves unary and
   streaming alike, and a wrapping generator that catches inside the loop may even keep the stream
-  alive; a client that went away destroys the generator — `finally` blocks run, `respond()` returns
-  normally — so ordinary cancellation needs no token API.
+  alive. The host closing the call — deadline, client gone, drain — is `WorkDiscardedException`
+  thrown into the generator at its yield, never a destroy: catch it to salvage progress or let it
+  fly, `finally` runs by ordinary unwinding either way, so cancellation needs no token API.
 - An inbound stream is one forward pass of an iterator. Its end is the client's half-close, spelled as
   the end of iteration and never as an exception, because every stream ends. A step waits exactly as
   `receive()` waits, and not pulling is the flow control: the host stops reading the client while
@@ -541,7 +542,7 @@ the headers left with the stream's first yield, and only trailers stay open afte
 | timeout and `try` variants on a `MessageStream` step | additive when the first consumer needs periodic chores between messages; `$deadline` and `isCancelled()` cover the known cases |
 | `Metadata::has()` | `values($k) !== []`, computed in place |
 | per-message metadata on stream messages | gRPC has none, so there is no envelope to model — a yield is bytes, a step is bytes |
-| a cancellation token for streams | a gone client destroys the response generator, so `finally` is the structural hook; `isCancelled()` covers checkpoints |
+| a cancellation token for streams | closure is thrown into the response generator as `WorkDiscardedException`, so `catch` and `finally` are the structural hooks; `isCancelled()` covers checkpoints |
 
 ## Open
 

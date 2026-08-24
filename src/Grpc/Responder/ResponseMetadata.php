@@ -15,8 +15,8 @@ use Rapira\Grpc\Responder;
  * For a single-message outcome both halves snapshot at finalization — the call's `respond()` or
  * {@see Responder::fail()}. For a streaming response, headers snapshot at the generator's first yield —
  * "add headers, then start yielding" is the entire commit API — and trailers when the stream
- * terminates: completed, failed, or destroyed by a gone client, whose trailer snapshot simply has no
- * destination.
+ * terminates: completed or failed. A call the host closed mid-stream was finalized by the closure
+ * itself, so its trailer snapshot simply has no destination.
  *
  * Allocated fresh with the call and dead with it; nothing survives into the worker's next call.
  *
