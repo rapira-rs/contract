@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rapira\Http;
 
 use Rapira\InetAddress;
+use Rapira\Tls;
 use Rapira\UnixAddress;
 
 /**

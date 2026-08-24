@@ -98,6 +98,7 @@ Plugins narrow `receive()` natively and add their own finalization verbs:
 namespace Rapira\Http;
 
 use Rapira\InetAddress;
+use Rapira\Tls;
 use Rapira\UnixAddress;
 
 interface HttpDispatcher extends \Rapira\Dispatcher
@@ -213,7 +214,7 @@ exchange" all name this shape the same way.
   put them on their request shapes, and what plugins share, the root holds.
 - Each plugin owns a first-level namespace: `Rapira\Http`, `Rapira\Grpc`, later `Rapira\Jobs`. `Rapira\`
   holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the address types,
-  the functions — and `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's
+  `Tls`, the functions — and `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's
   own live the same way, in its own `Exception\` sub-namespace — `Http\Exception\HeadAlreadyWrittenError` —
   one rule for where a throwable lives, whichever surface throws it. A family of variants lives under
   its root's name the same way: `Grpc\Call\StreamingRequest` extends `Grpc\Call`, the directory

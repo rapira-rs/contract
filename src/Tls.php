@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Http;
+namespace Rapira;
 
 /**
- * What the TLS handshake settled, for the connection this request arrived on. Present on
- * {@see Request::$tls} only when the listener terminated TLS itself — a plaintext listener behind a
- * terminating proxy has none of this, and the forwarding headers it sends instead are the framework's
- * business.
+ * What the TLS handshake settled, for the connection this request arrived on. Both plugins put it on
+ * their request shapes — {@see Http\Request::$tls}, {@see Grpc\Call\Context::$tls} — present only when
+ * the listener terminated TLS itself: a plaintext listener behind a terminating proxy has none of
+ * this, and the forwarding headers it sends instead are the framework's business.
  *
  * The certificate fields describe the *client's* certificate and are all null unless one was presented,
  * which happens only where the listener asks for it. They are the identity mTLS authenticates on.
@@ -19,10 +19,10 @@ final readonly class Tls
      * @param non-empty-string $version Protocol version as the TLS stack names it: `TLSv1.3`, `TLSv1.2`.
      * @param non-empty-string $cipher Negotiated cipher suite, likewise: `TLS_AES_256_GCM_SHA384`.
      * @param non-empty-string|null $negotiatedProtocol What ALPN settled on — `h2`, `http/1.1` — or null
-     *        when the client offered no list. Not a substitute for {@see Request::$protocol}, which says
-     *        what was actually spoken.
+     *        when the client offered no list. Not a substitute for {@see Http\Request::$protocol}, which
+     *        says what was actually spoken.
      * @param non-empty-string|null $requestedServerName Name the client asked for through SNI, or null if
-     *        it sent none. Not the `Host` header and not {@see Request::$server}: this one chose the
+     *        it sent none. Not the `Host` header and not {@see Http\Request::$server}: this one chose the
      *        certificate, before any request existed, so it can disagree with both.
      * @param non-empty-string|null $certSerial Serial number of the client certificate, hex.
      * @param non-empty-string|null $certOrganization Organization named in the client certificate's
