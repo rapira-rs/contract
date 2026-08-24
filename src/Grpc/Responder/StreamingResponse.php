@@ -59,9 +59,9 @@ interface StreamingResponse extends Responder
      * further yield throws afresh — the message has no destination — and metadata added in the catch
      * meets {@see AlreadyFinalizedError}. A generator that catches and runs to its end returns this
      * method normally, and no `OK` is sent: completing after closure is survival, not success. When
-     * the generator is waiting inside {@see StreamingRequest::getMessages()} instead, its
-     * {@see MessageStream::valid()} delivers the same exception — one delivery, at whichever wait
-     * point is active.
+     * the generator is waiting inside {@see StreamingRequest::getMessages()} instead, the
+     * {@see MessageStream} wait it rests in — `next()` or the iteration — delivers the same
+     * exception: one delivery, at whichever wait point is active.
      *
      * Response headers and trailers ride the {@see Responder::getResponseMetadata()} accumulator:
      * headers snapshot at the first yield, trailers at termination, both at once when the stream
