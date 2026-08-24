@@ -30,10 +30,16 @@ interface MessageStream extends \Iterator
     /**
      * The current message: the canonical binary-protobuf encoding of the method's input message,
      * whatever the client spoke, exactly as {@see UnaryRequest::getMessage()} has it.
+     *
+     * @throws \Error Outside a valid position — before {@see self::valid()} first answered, or after
+     *         it answered false. Reading past the end is wrong code, not an empty value.
      */
     public function current(): string;
 
-    /** @return int<0, max> Zero-based index of the current message. */
+    /**
+     * @return int<0, max> Zero-based index of the current message.
+     * @throws \Error Outside a valid position, as {@see self::current()}.
+     */
     public function key(): int;
 
     /** Discard the current message. Returns at once; {@see self::valid()} is where the wait lives. */
@@ -41,7 +47,9 @@ interface MessageStream extends \Iterator
 
     /**
      * Whether a message is here — waiting, per the semantics above, until it can answer: a message
-     * arrived (true) or the client half-closed (false).
+     * arrived (true) or the client half-closed (false). The wait lives here and not in
+     * {@see self::next()} because `foreach` asks this first, so the loop body only ever sees a message
+     * that exists.
      *
      * @throws WorkDiscardedException The host closed the call while waiting: deadline passed, client
      *         gone without half-closing, worker draining. Half-close is not this — it is the stream's

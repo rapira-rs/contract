@@ -9,6 +9,7 @@ use Rapira\Grpc\GrpcDispatcher;
 use Rapira\Grpc\Metadata;
 use Rapira\Grpc\Responder\ResponseMetadata;
 use Rapira\InetAddress;
+use Rapira\Tls;
 use Rapira\UnixAddress;
 
 /**
@@ -38,6 +39,10 @@ final readonly class Context
      *        it regardless, and {@see Call::isCancelled()} turns true when it passes.
      * @param InetAddress|UnixAddress $remote The peer's end of the connection. Deciding whether to
      *        trust it, and which forwarding header supersedes it, is the framework's business.
+     * @param Tls|null $tls What the handshake settled — the same shape HTTP puts on
+     *        {@see \Rapira\Http\Request::$tls}, its certificate fields the identity mTLS authenticates
+     *        on. Null when the listener did not terminate TLS itself. Deriving a principal from the
+     *        certificate — a SPIFFE ID, a tenant — is the framework's business.
      * @param Protocol $protocol What the client actually spoke. Diagnostic — a log field, never a
      *        branching invite: the host has already normalized everything the protocols do differently.
      * @param float $receivedAt Unix timestamp with microsecond precision, taken when the host accepted
@@ -48,6 +53,7 @@ final readonly class Context
         public Metadata $metadata,
         public ?float $deadline,
         public InetAddress|UnixAddress $remote,
+        public ?Tls $tls,
         public Protocol $protocol,
         public float $receivedAt,
     ) {}
