@@ -378,6 +378,7 @@ final readonly class Context
         public \Rapira\Grpc\Metadata $metadata,  // application keys only; grpc-*, content-* never appear
         public ?float $deadline,                 // unix timestamp; null when none. Advisory — the host enforces it
         public InetAddress|UnixAddress $remote,  // the same union HTTP puts on Request::$remote
+        public ?Tls $tls,                        // the same shape HTTP puts on Request::$tls; its cert fields are the mTLS identity
         public Protocol $protocol,               // grpc | grpc-web | connect — a log field, never a branch
         public float $receivedAt,
     ) {}
@@ -430,9 +431,11 @@ $call instanceof Responder\StreamingResponse
 - A streaming response is a drained generator: `respond()` returns only when the stream terminates.
   The worker is single-threaded, so the host pumps the generator only while PHP is inside the call;
   backpressure is the generator simply not resumed while the transport's window is closed. Running to
-  completion means `OK`; a `GrpcException` escaping mid-stream is caught at the drain and becomes the
-  terminal status; a client that went away destroys the generator — `finally` blocks run, `respond()`
-  returns normally — so ordinary cancellation needs no token API.
+  completion means `OK`; a throwable escaping the generator escapes `respond()` unchanged with the
+  call left unfinalized, so the adapter's one catch — `$call->fail($e->status)` — serves unary and
+  streaming alike, and a wrapping generator that catches inside the loop may even keep the stream
+  alive; a client that went away destroys the generator — `finally` blocks run, `respond()` returns
+  normally — so ordinary cancellation needs no token API.
 - An inbound stream is one forward pass of an iterator. Its end is the client's half-close, spelled as
   the end of iteration and never as an exception, because every stream ends. A step waits exactly as
   `receive()` waits, and not pulling is the flow control: the host stops reading the client while
@@ -456,9 +459,10 @@ $call instanceof Responder\StreamingResponse
 - A status is data, the exception a thin thrower over it — the split grpc-go and grpc-java draw.
   `fail()` takes the `google.rpc.Status` triple, and the host encodes it once per protocol:
   `grpc-status` trailers for gRPC, the trailer frame for gRPC-Web, an HTTP status plus error JSON for
-  Connect. Anything *not* a `GrpcException` escaping the worker is a bug, not a status: the script
-  fatals, the host answers a sanitized `INTERNAL` — trace logged server-side, message withheld — and
-  recycles the worker per pool policy.
+  Connect. The host interprets no exception: any `Throwable` escaping the worker — `GrpcException`
+  included — is a bug, not a status: the script fatals, the host answers a sanitized `INTERNAL` —
+  trace logged server-side, message withheld — and recycles the worker per pool policy. An error
+  status reaches the wire through `fail()` and nowhere else.
 
 ## Exceptions
 
@@ -488,9 +492,11 @@ client, lease lost to another worker. The worker broke no rule, so it is a runti
 error, and a handler catches it to log the loss. Polling `Work::isCancelled()` at checkpoints avoids
 getting there at all.
 
-`Grpc\Exception\GrpcException` is the one throwable the host itself matches on: escaping a streaming
-generator, it is caught at the drain and becomes the terminal status, framed per protocol — which is
-why the base class is contract while its curated subclasses are not. It carries its `Status` as
+`Grpc\Exception\GrpcException` the host never catches — no exception is interpreted across the
+boundary: one escaping a response generator escapes `respond()` unchanged, one escaping the worker is
+a bug like any other throwable. The base class is contract so that every SDK and library throws the
+same spelling and one adapter catch serves every method kind; its curated subclasses stay SDK
+vocabulary. It carries its `Status` as
 `$status`, because `\Exception::$code` already exists as an untyped `int` and cannot be redeclared.
 `Grpc\Exception\HeadersAlreadyCommittedError` is `HeadAlreadyWrittenError`'s fact in gRPC spelling:
 the headers left with the stream's first yield, and only trailers stay open after it.
@@ -529,10 +535,11 @@ the headers left with the stream's first yield, and only trailers stay open afte
 | `Grpc\call_context()`, an ambient accessor for the call's context | between `receive()` and finalization the host cannot see which held unit the running code serves — `tryReceive()` legally batches several onto one fiber, and processing is plain userland with no dispatch boundary the engine observes — so any host-installed slot (per process, per fiber, even a per-fiber stack) silently answers with a *different* call's deadline and metadata under a reordered batch. The SDK chooses the execution discipline, so the SDK owns the mapping: a static in a one-at-a-time loop, a `Fiber`-keyed map, a `WeakMap` from the decoded request message. The contract's spelling is `Call::getContext()`, where the type binds context to call and no order of processing can shuffle it |
 | a union `respond(string\|\Generator)` on one call type | the response shape is the method's fact, fixed in `.proto` — Connect even frames unary and streaming responses differently — so the union carries as a runtime check what the axis interfaces carry as a type |
 | `StatusCode::Ok` | `fail()` is the code's only consumer, a successful call is its type's `respond()`, and a type that cannot spell "failed with OK" is worth one missing case |
-| curated `GrpcException` subclasses — `NotFoundException`, `InvalidArgumentException`, … | one `parent::__construct()` call each, so they are SDK vocabulary; the base class is contract only because the host matches it at the stream drain |
+| curated `GrpcException` subclasses — `NotFoundException`, `InvalidArgumentException`, … | one `parent::__construct()` call each, so they are SDK vocabulary; the base class is contract only so that every SDK and library throws one spelling for one adapter catch |
 | `Grpc\Call\Context::timeRemaining()` | `$deadline - microtime(true)` |
 | `MethodInfo::$fullName` | `ServiceInfo::$name . '/' . $name` |
 | timeout and `try` variants on a `MessageStream` step | additive when the first consumer needs periodic chores between messages; `$deadline` and `isCancelled()` cover the known cases |
+| `Metadata::has()` | `values($k) !== []`, computed in place |
 | per-message metadata on stream messages | gRPC has none, so there is no envelope to model — a yield is bytes, a step is bytes |
 | a cancellation token for streams | a gone client destroys the response generator, so `finally` is the structural hook; `isCancelled()` covers checkpoints |
 

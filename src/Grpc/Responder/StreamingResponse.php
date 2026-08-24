@@ -7,7 +7,6 @@ namespace Rapira\Grpc\Responder;
 use Rapira\Exception\AlreadyFinalizedError;
 use Rapira\Exception\WorkDiscardedException;
 use Rapira\Grpc\Call\StreamingRequest;
-use Rapira\Grpc\Exception\GrpcException;
 use Rapira\Grpc\MethodKind;
 use Rapira\Grpc\Responder;
 
@@ -45,8 +44,11 @@ interface StreamingResponse extends Responder
      * which is what makes bidi bidirectional — and ending the response ends the call: request messages
      * not yet pulled are discarded, and the host tells the client to stop sending.
      *
-     * Running to completion means `OK`. A {@see GrpcException} escaping mid-stream is caught here, at
-     * the drain, and becomes the terminal status. A client that went away destroys the generator —
+     * Running to completion means `OK`. A throwable escaping the generator escapes this method
+     * unchanged — the host interprets no exception: choosing the status, or catching inside a wrapping
+     * generator and continuing the stream, is the caller's business. The call is left unfinalized —
+     * committed headers and sent messages stand, and gRPC carries errors in trailers anyway — so
+     * {@see Responder::fail()} still finalizes it. A client that went away destroys the generator —
      * `finally` blocks in service code run — and the call returns normally: ordinary cancellation
      * finalizes the call, it does not fault a healthy worker.
      *
@@ -56,7 +58,8 @@ interface StreamingResponse extends Responder
      *
      * @param \Generator<int, string> $messages
      * @throws AlreadyFinalizedError The call was already finalized.
-     * @throws WorkDiscardedException The host closed the call before anything was committed.
+     * @throws WorkDiscardedException The host closed the call before the drain began; once draining,
+     *         closure destroys the generator and the call returns normally instead.
      */
     public function respond(\Generator $messages): void;
 }

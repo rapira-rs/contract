@@ -17,7 +17,8 @@ final readonly class Metadata implements \Countable, \IteratorAggregate
      * @param array<lowercase-string&non-empty-string, list<string>> $entries Keys already normalized
      *        to lower case; values of `-bin` keys already decoded to raw bytes — base64, padded or
      *        not, is the boundary's job per the gRPC spec.
-     * @throws \ValueError A key is empty, not lower-case, or not ASCII.
+     * @throws \ValueError A key is empty, not lower-case, or not ASCII — or a value under a text key
+     *         is not ASCII; `-bin` keys carry any bytes.
      */
     public function __construct(
         public array $entries = [],
