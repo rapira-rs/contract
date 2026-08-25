@@ -30,8 +30,8 @@ enum MethodKind: string
     }
 
     /**
-     * Whether calls of this method finalize through {@see Responder\StreamingResponse} — a drained
-     * generator — rather than {@see Responder\UnaryResponse} — one message.
+     * Whether calls of this method finalize through {@see Responder\StreamingResponder} — a drained
+     * generator — rather than {@see Responder\UnaryResponder} — one message.
      */
     public function isStreamingResponse(): bool
     {

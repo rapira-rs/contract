@@ -31,7 +31,7 @@ use Rapira\Grpc\Responder;
  * })());
  * ```
  */
-interface StreamingResponse extends Responder
+interface StreamingResponder extends Responder
 {
     /**
      * Finalize the call by draining a response stream: one message framed and flushed per yielded
