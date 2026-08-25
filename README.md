@@ -295,9 +295,9 @@ namespace Rapira\Grpc;
 
 interface GrpcDispatcher extends \Rapira\Dispatcher
 {
-    public function tryReceive(): (Call&Responder)|null;
+    public function tryReceive(): UnaryCall|ServerStreamingCall|ClientStreamingCall|BidiStreamingCall|null;
 
-    public function receive(int $timeout = -1): Call&Responder;
+    public function receive(int $timeout = -1): UnaryCall|ServerStreamingCall|ClientStreamingCall|BidiStreamingCall;
 
     public function getInfo(): GrpcDispatcherInfo;
 
@@ -410,6 +410,14 @@ interface StreamingResponder extends \Rapira\Grpc\Responder
 
 /** Mutable per-call accumulator: addHeader()/addTrailer() and their -bin twins. */
 interface ResponseMetadata {}
+
+namespace Rapira\Grpc;
+
+/** The four kinds, named: each extends its two axes and adds nothing — one instanceof settles both. */
+interface UnaryCall extends Call\UnaryRequest, Responder\UnaryResponder {}
+interface ServerStreamingCall extends Call\UnaryRequest, Responder\StreamingResponder {}
+interface ClientStreamingCall extends Call\StreamingRequest, Responder\UnaryResponder {}
+interface BidiStreamingCall extends Call\StreamingRequest, Responder\StreamingResponder {}
 ```
 
 The adapter's whole dispatch is two binary questions:
@@ -426,14 +434,15 @@ $call instanceof Responder\StreamingResponder
 
 - The split into `Call` and `Responder` is a privilege ladder, climbed by type: `Context` grants
   reading the data, `Call` adds the `Work` facts, `Responder` answers without reading, and `receive()`
-  hands out the intersection — the whole unit. Nothing ambient bypasses the ladder; the table below
-  has the reasoning.
+  hands out one of the four kinds — the whole unit. Nothing ambient bypasses the ladder; the table
+  below has the reasoning.
 - One axis per fact, engine-checked. The response shape is the method's fact, fixed in `.proto`, so
   `respond(string)` and `respond(\Generator)` are two interfaces rather than one union signature
-  policed at runtime. An adapter asks two binary `instanceof` questions and never branches four ways.
-  `MethodKind` is the same pair of facts before any call exists — at boot, binding services — and
-  projects onto the axes with `isStreamingRequest()`/`isStreamingResponse()`, so nobody unpacks the
-  four names by hand.
+  policed at runtime. An adapter asks two binary `instanceof` questions, or takes the kind whole:
+  the four kind interfaces name the points of the product, so `receive()`'s signature is a plain
+  union rather than tribal knowledge about which intersections exist. `MethodKind` is the same four
+  names before any call exists — at boot, binding services — and projects onto the axes with
+  `isStreamingRequest()`/`isStreamingResponse()`, so nobody unpacks them by hand.
 - A streaming response is a drained generator: `respond()` returns only when the stream terminates.
   The worker is single-threaded, so the host pumps the generator only while PHP is inside the call;
   backpressure is the generator simply not resumed while the transport's window is closed. Running to

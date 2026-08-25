@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Rapira\Grpc;
 
 /**
- * The streaming shape of a {@see MethodInfo}: the four names gRPC speaks, projected onto the two
- * axes the contract splits a call into by {@see self::isStreamingRequest()} and
- * {@see self::isStreamingResponse()} — an adapter asks per axis and never unpacks the four names
- * itself, and the case is what a log field or an exhaustive `match` wants.
+ * The streaming shape of a {@see MethodInfo}: the four names gRPC speaks — the same four
+ * {@see GrpcDispatcher::receive()} hands out as {@see UnaryCall}, {@see ServerStreamingCall},
+ * {@see ClientStreamingCall} and {@see BidiStreamingCall} — projected onto the two axes the contract
+ * splits a call into by {@see self::isStreamingRequest()} and {@see self::isStreamingResponse()}.
+ * An adapter asks per axis or takes the kind whole, and the case is what a log field or an
+ * exhaustive `match` wants.
  */
 enum MethodKind: string
 {
