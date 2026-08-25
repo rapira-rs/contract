@@ -2,11 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Grpc\Call;
-
-use Rapira\Grpc\Call;
-use Rapira\Grpc\MethodInfo;
-use Rapira\Grpc\MethodKind;
+namespace Rapira\Grpc;
 
 /**
  * The request axis of {@see MethodKind::Unary} and {@see MethodKind::ServerStreaming} calls: one

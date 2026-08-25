@@ -75,23 +75,48 @@ enum MethodKind: string
 }
 ```
 
-Each root forks into its two axes, a method's calls implement the pair its `.proto` fixed, and the
-shapes a root hands out live under its name:
+Each root forks into its two axes — siblings of their roots in the plugin namespace — a method's
+calls implement the pair its `.proto` fixed, and the four kinds name the points of the product:
 
 ```php
-namespace Rapira\Grpc\Call;
+namespace Rapira\Grpc;
 
 /** Unary and ServerStreaming methods: the one request message, in hand before dispatch. */
-interface UnaryRequest extends \Rapira\Grpc\Call
+interface UnaryRequest extends Call
 {
     public function getMessage(): string;
 }
 
 /** ClientStreaming and BidiStreaming methods: handed out on the first message, the rest arriving. */
-interface StreamingRequest extends \Rapira\Grpc\Call
+interface StreamingRequest extends Call
 {
-    public function getMessages(): MessageStream;
+    public function getMessages(): Call\MessageStream;
 }
+
+/** Unary and ClientStreaming methods: one message finishes the call. */
+interface UnaryResponder extends Responder
+{
+    public function respond(string $message): void;
+}
+
+/** ServerStreaming and BidiStreaming methods: a drained generator finishes the call. */
+interface StreamingResponder extends Responder
+{
+    /** @param \Generator<int, string> $messages */
+    public function respond(\Generator $messages): void;
+}
+
+/** The four kinds, named: each extends its two axes and adds nothing — one instanceof settles both. */
+interface UnaryCall extends UnaryRequest, UnaryResponder {}
+interface ServerStreamingCall extends UnaryRequest, StreamingResponder {}
+interface ClientStreamingCall extends StreamingRequest, UnaryResponder {}
+interface BidiStreamingCall extends StreamingRequest, StreamingResponder {}
+```
+
+The shapes only a root hands out live under its name:
+
+```php
+namespace Rapira\Grpc\Call;
 
 /** From Call::getContext(): the request side, whole and immutable. */
 final readonly class Context
@@ -117,39 +142,18 @@ interface MessageStream extends \IteratorAggregate
 
 namespace Rapira\Grpc\Responder;
 
-/** Unary and ClientStreaming methods: one message finishes the call. */
-interface UnaryResponder extends \Rapira\Grpc\Responder
-{
-    public function respond(string $message): void;
-}
-
-/** ServerStreaming and BidiStreaming methods: a drained generator finishes the call. */
-interface StreamingResponder extends \Rapira\Grpc\Responder
-{
-    /** @param \Generator<int, string> $messages */
-    public function respond(\Generator $messages): void;
-}
-
 /** Mutable per-call accumulator: addHeader()/addTrailer() and their -bin twins. */
 interface ResponseMetadata {}
-
-namespace Rapira\Grpc;
-
-/** The four kinds, named: each extends its two axes and adds nothing — one instanceof settles both. */
-interface UnaryCall extends Call\UnaryRequest, Responder\UnaryResponder {}
-interface ServerStreamingCall extends Call\UnaryRequest, Responder\StreamingResponder {}
-interface ClientStreamingCall extends Call\StreamingRequest, Responder\UnaryResponder {}
-interface BidiStreamingCall extends Call\StreamingRequest, Responder\StreamingResponder {}
 ```
 
 The adapter's whole dispatch is two binary questions:
 
 ```php
-$out = $call instanceof Call\StreamingRequest
+$out = $call instanceof StreamingRequest
     ? $service->handleStream($call->getMessages())
     : $service->handle($call->getMessage());
 
-$call instanceof Responder\StreamingResponder
+$call instanceof StreamingResponder
     ? $call->respond($encodeEach($out))
     : $call->respond($out->serializeToString());
 ```

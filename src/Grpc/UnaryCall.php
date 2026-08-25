@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Rapira\Grpc;
 
-use Rapira\Grpc\Call\UnaryRequest;
-use Rapira\Grpc\Responder\UnaryResponder;
-
 /**
  * A {@see MethodKind::Unary} call, whole: the one request message in hand, one message finalizes it.
  *

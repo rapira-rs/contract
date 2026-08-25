@@ -12,8 +12,8 @@ use Rapira\Work;
  * {@see GrpcDispatcher::receive()} hands out one object implementing both. A layer given only this
  * half reads the call and cannot answer it.
  *
- * The request side forks by the method's shape: {@see Call\UnaryRequest} holds one message,
- * {@see Call\StreamingRequest} a stream still arriving.
+ * The request side forks by the method's shape: {@see UnaryRequest} holds one message,
+ * {@see StreamingRequest} a stream still arriving.
  */
 interface Call extends Work
 {
