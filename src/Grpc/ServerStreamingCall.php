@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Rapira\Grpc;
 
-use Rapira\Grpc\Call\UnaryRequest;
-use Rapira\Grpc\Responder\StreamingResponder;
-
 /**
  * A {@see MethodKind::ServerStreaming} call, whole: the one request message in hand, a drained
  * generator finalizes it.

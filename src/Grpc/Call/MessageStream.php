@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Rapira\Grpc\Call;
 
 use Rapira\Dispatcher;
+use Rapira\Grpc\StreamingRequest;
+use Rapira\Grpc\UnaryRequest;
 use Rapira\Exception\ClosedException;
 use Rapira\Exception\TimeoutException;
 use Rapira\Exception\WorkDiscardedException;

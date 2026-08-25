@@ -20,8 +20,8 @@ enum MethodKind: string
     case BidiStreaming = 'bidi-streaming';
 
     /**
-     * Whether calls of this method carry {@see Call\StreamingRequest} — the messages still arriving —
-     * rather than {@see Call\UnaryRequest} — one message in hand.
+     * Whether calls of this method carry {@see StreamingRequest} — the messages still arriving —
+     * rather than {@see UnaryRequest} — one message in hand.
      */
     public function isStreamingRequest(): bool
     {
@@ -32,8 +32,8 @@ enum MethodKind: string
     }
 
     /**
-     * Whether calls of this method finalize through {@see Responder\StreamingResponder} — a drained
-     * generator — rather than {@see Responder\UnaryResponder} — one message.
+     * Whether calls of this method finalize through {@see StreamingResponder} — a drained
+     * generator — rather than {@see UnaryResponder} — one message.
      */
     public function isStreamingResponse(): bool
     {

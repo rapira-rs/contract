@@ -2,13 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Grpc\Responder;
+namespace Rapira\Grpc;
 
 use Rapira\Exception\AlreadyFinalizedError;
 use Rapira\Exception\WorkDiscardedException;
-use Rapira\Grpc\Call\StreamingRequest;
-use Rapira\Grpc\MethodKind;
-use Rapira\Grpc\Responder;
 
 /**
  * The response axis of {@see MethodKind::Unary} and {@see MethodKind::ClientStreaming} calls: one

@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Rapira\Grpc;
 
-use Rapira\Grpc\Call\StreamingRequest;
-use Rapira\Grpc\Responder\StreamingResponder;
-
 /**
  * A {@see MethodKind::BidiStreaming} call, whole: the request messages still arriving, a drained
  * generator that reads them between its yields finalizes it.

@@ -121,12 +121,12 @@ the reasoning behind its shape, lives beside its stubs:
   holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the address types,
   `Tls`, the functions — and `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's
   own live the same way, in its own `Exception\` sub-namespace — `Http\Exception\HeadAlreadyWrittenError` —
-  one rule for where a throwable lives, whichever surface throws it. A family of variants lives under
-  its root's name the same way: `Grpc\Call\StreamingRequest` extends `Grpc\Call`, the directory
-  repeating the hierarchy. So do the shapes only that root hands out — `Grpc\Call\Context` exists
-  through `Call::getContext()` and nothing else — while what worker code constructs itself, `Status`
-  and the boot-time descriptors, stays at the plugin root: the directory answers who gives you the
-  object.
+  one rule for where a throwable lives, whichever surface throws it. A refinement of a type is a
+  sibling, not a child: `Grpc\StreamingRequest` extends `Grpc\Call` in the same namespace — a subtype
+  is a way the parent comes, not something it hands out. A directory under a type's name holds only
+  the shapes that type alone hands out — `Grpc\Call\Context` exists through `Call::getContext()` and
+  nothing else — while what worker code constructs itself, `Status` and the boot-time descriptors,
+  stays at the plugin root: the directory answers who gives you the object.
 - Unfinalized units are the host's problem: it fails them and recycles the worker per pool policy.
 - Cancellation is cooperative. VM interrupts are a pool watchdog, not routine cancellation, and cannot fire
   while PHP is inside a blocking native call.
