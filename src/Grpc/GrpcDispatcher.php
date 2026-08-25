@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Rapira\Grpc;
 
 use Rapira\Dispatcher;
+use Rapira\Grpc\Call\StreamingRequest;
+use Rapira\Grpc\Call\UnaryRequest;
+use Rapira\Grpc\Responder\StreamingResponder;
+use Rapira\Grpc\Responder\UnaryResponder;
 
 /**
  * The gRPC plugin's dispatcher. Obtain it from {@see \Rapira\get_dispatcher()} when the worker serves
@@ -56,7 +60,7 @@ interface GrpcDispatcher extends Dispatcher
      * @throws \Rapira\Exception\TimeoutException No call became available within $timeout.
      * @throws \Rapira\Exception\ClosedException No more calls will ever arrive.
      */
-    public function receive(int $timeout = -1): Call&Responder;
+    public function receive(int $timeout = -1): (UnaryRequest&StreamingResponder)|(UnaryRequest&UnaryResponder)|(StreamingRequest&StreamingResponder)|(StreamingRequest&UnaryResponder);
 
     /**
      * Live plugin counters. Observability only — never a control-flow source.

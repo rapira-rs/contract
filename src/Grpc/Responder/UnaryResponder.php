@@ -18,7 +18,7 @@ use Rapira\Grpc\Responder;
  * $call->respond($service->getInvoice($in)->serializeToString());
  * ```
  */
-interface UnaryResponse extends Responder
+interface UnaryResponder extends Responder
 {
     /**
      * Finalize the call with the response message: the canonical binary-protobuf encoding of the

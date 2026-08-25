@@ -396,13 +396,13 @@ interface MessageStream extends \IteratorAggregate
 namespace Rapira\Grpc\Responder;
 
 /** Unary and ClientStreaming methods: one message finishes the call. */
-interface UnaryResponse extends \Rapira\Grpc\Responder
+interface UnaryResponder extends \Rapira\Grpc\Responder
 {
     public function respond(string $message): void;
 }
 
 /** ServerStreaming and BidiStreaming methods: a drained generator finishes the call. */
-interface StreamingResponse extends \Rapira\Grpc\Responder
+interface StreamingResponder extends \Rapira\Grpc\Responder
 {
     /** @param \Generator<int, string> $messages */
     public function respond(\Generator $messages): void;
@@ -419,7 +419,7 @@ $out = $call instanceof Call\StreamingRequest
     ? $service->handleStream($call->getMessages())
     : $service->handle($call->getMessage());
 
-$call instanceof Responder\StreamingResponse
+$call instanceof Responder\StreamingResponder
     ? $call->respond($encodeEach($out))
     : $call->respond($out->serializeToString());
 ```

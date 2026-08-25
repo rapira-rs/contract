@@ -14,8 +14,8 @@ use Rapira\Work;
  * {@see GrpcDispatcher::receive()} hands out one object implementing both. A layer given only this
  * half answers the call and cannot read it.
  *
- * The success verb lives on the response axis — {@see Responder\UnaryResponse} takes one message,
- * {@see Responder\StreamingResponse} drains a generator. Failing lives here: every kind fails the
+ * The success verb lives on the response axis — {@see Responder\UnaryResponder} takes one message,
+ * {@see Responder\StreamingResponder} drains a generator. Failing lives here: every kind fails the
  * same way.
  */
 interface Responder extends Work
