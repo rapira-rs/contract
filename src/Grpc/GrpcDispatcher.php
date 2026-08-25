@@ -5,10 +5,6 @@ declare(strict_types=1);
 namespace Rapira\Grpc;
 
 use Rapira\Dispatcher;
-use Rapira\Grpc\Call\StreamingRequest;
-use Rapira\Grpc\Call\UnaryRequest;
-use Rapira\Grpc\Responder\StreamingResponder;
-use Rapira\Grpc\Responder\UnaryResponder;
 
 /**
  * The gRPC plugin's dispatcher. Obtain it from {@see \Rapira\get_dispatcher()} when the worker serves
@@ -46,11 +42,11 @@ interface GrpcDispatcher extends Dispatcher
     /**
      * Take a call if one is available right now. Never blocks.
      *
-     * @return (Call&Responder)|null Null means nothing is available at this moment; the queue may
-     *         fill again.
+     * @return UnaryCall|ServerStreamingCall|ClientStreamingCall|BidiStreamingCall|null Null means
+     *         nothing is available at this moment; the queue may fill again.
      * @throws \Rapira\Exception\ClosedException No more calls will ever arrive.
      */
-    public function tryReceive(): (Call&Responder)|null;
+    public function tryReceive(): UnaryCall|ServerStreamingCall|ClientStreamingCall|BidiStreamingCall|null;
 
     /**
      * Wait up to $timeout for the next call, with {@see Dispatcher::receive()}'s waiting semantics:
@@ -60,7 +56,7 @@ interface GrpcDispatcher extends Dispatcher
      * @throws \Rapira\Exception\TimeoutException No call became available within $timeout.
      * @throws \Rapira\Exception\ClosedException No more calls will ever arrive.
      */
-    public function receive(int $timeout = -1): (UnaryRequest&StreamingResponder)|(UnaryRequest&UnaryResponder)|(StreamingRequest&StreamingResponder)|(StreamingRequest&UnaryResponder);
+    public function receive(int $timeout = -1): UnaryCall|ServerStreamingCall|ClientStreamingCall|BidiStreamingCall;
 
     /**
      * Live plugin counters. Observability only — never a control-flow source.
