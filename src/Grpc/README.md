@@ -4,9 +4,10 @@ The shared core — `Dispatcher`, `Work`, the address types, the rules every plu
 the [package README](../../README.md); this file holds only what is gRPC's own.
 
 Host-side the plugin is built on ConnectRPC rather than a native gRPC stack:
-one registration serves native gRPC, binary gRPC-Web and Connect — proto and JSON — selected per
-request from `Content-Type`, and none of that reaches PHP. Every request message crosses the boundary
-as the canonical binary-protobuf encoding of the method's input message — Connect-JSON is one
+one registration serves native gRPC, binary gRPC-Web, Connect — proto and JSON — and plain REST
+transcoded from `google.api.http` annotations, told apart per request by `Content-Type` and path,
+and none of that reaches PHP. Every request message crosses the boundary
+as the canonical binary-protobuf encoding of the method's input message — Connect-JSON and REST are one
 descriptor-driven transcode at the edge — and the response crosses back the same way. Framing,
 per-message compression, `grpc-timeout` parsing and per-protocol error encoding are the host's job.
 Dispatch is descriptor-driven: `.proto` sources compile at boot, the `[grpc].services` entries resolve
@@ -127,7 +128,7 @@ final readonly class Context
         public ?float $deadline,                 // unix timestamp; null when none. Advisory — the host enforces it
         public InetAddress|UnixAddress $remote,  // the same union HTTP puts on Request::$remote
         public ?Tls $tls,                        // the same shape HTTP puts on Request::$tls; its cert fields are the mTLS identity
-        public Protocol $protocol,               // grpc | grpc-web | connect — a log field, never a branch
+        public Protocol $protocol,               // grpc | grpc-web | connect | rest — a log field, never a branch
         public float $receivedAt,
     ) {}
 }
@@ -206,7 +207,7 @@ $call instanceof StreamingResponder
 - A status is data, the exception a thin thrower over it — the split grpc-go and grpc-java draw.
   `fail()` takes the `google.rpc.Status` triple, and the host encodes it once per protocol:
   `grpc-status` trailers for gRPC, the trailer frame for gRPC-Web, an HTTP status plus error JSON for
-  Connect. The host interprets no exception: any `Throwable` escaping the worker — `GrpcException`
+  Connect and REST. The host interprets no exception: any `Throwable` escaping the worker — `GrpcException`
   included — is a bug, not a status: the script fatals, the host answers a sanitized `INTERNAL` —
   trace logged server-side, message withheld — and recycles the worker per pool policy. An error
   status reaches the wire through `fail()` and nowhere else.
