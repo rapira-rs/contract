@@ -21,6 +21,9 @@ function get_dispatcher(): Dispatcher {}
 /** The mode the host launched this process in. Fixed for the life of the process. */
 function get_mode(): Mode {}
 
+/** Worker mode only: serves the next SAPI request through $handler; false once the host is done. */
+function handle_request(callable $handler): bool {}
+
 /** Version of the running Rapira server. */
 function get_version(): string {}
 
