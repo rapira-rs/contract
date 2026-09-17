@@ -3,6 +3,9 @@
     "description": "PHP-side contract for Rapira, a PHP application server written in Rust. Stubs only — the extension provides the implementations.",
     "license": "MIT",
     "autoload": {
+        "files": [
+            "src/functions.php"
+        ],
         "psr-4": {
             "Rapira\\": "src/"
         }

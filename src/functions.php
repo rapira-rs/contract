@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Rapira;
 
+if (\function_exists('Rapira\get_version')) {
+    return;
+}
+
 /**
  * Version of the running Rapira server.
  *
@@ -11,7 +15,7 @@ namespace Rapira;
  */
 function get_version(): string
 {
-    return '0.1.0';
+    return '0.0.0';
 }
 
 /**
@@ -23,7 +27,9 @@ function get_version(): string
  * is only in {@see Mode::Dispatcher}.
  */
 function get_mode(): Mode
-{}
+{
+    return Mode::Classic;
+}
 
 /**
  * Serve the next request in {@see Mode::Worker}.
@@ -37,7 +43,9 @@ function get_mode(): Mode
  * @param callable(): bool $handler
  */
 function handle_request(callable $handler): bool
-{}
+{
+    return false;
+}
 
 /**
  * Get the current dispatcher instance.
@@ -47,7 +55,9 @@ function handle_request(callable $handler): bool
  *         work to this process, so there is nothing to return.
  */
 function get_dispatcher(): Dispatcher
-{}
+{
+    throw new Exception\NoDispatcherError('Dispatcher is only available in Mode::Dispatcher');
+}
 
 /**
  * Write a diagnostic to Rapira's log under the `app` target.
@@ -63,4 +73,10 @@ function get_dispatcher(): Dispatcher
  *        kept, the value is replaced with a placeholder, and the loss is noted in the record itself.
  */
 function log(string $message, LogLevel $level = LogLevel::Info, array $context = []): void
-{}
+{
+    \error_log(json_encode([
+        'level' => $level->name,
+        'message' => $message,
+        'context' => $context,
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+}
