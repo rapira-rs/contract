@@ -16,7 +16,8 @@ final readonly class Metadata implements \Countable, \IteratorAggregate
     /**
      * @param array<lowercase-string&non-empty-string, list<string>> $entries Keys already normalized
      *        to lower case; values of `-bin` keys already decoded to raw bytes — base64, padded or
-     *        not, is the boundary's job per the gRPC spec.
+     *        not, is the boundary's job per the gRPC spec. A key made only of digits is an int key,
+     *        as PHP arrays store it.
      * @throws \ValueError A key is empty, not lower-case, or not ASCII, or a value under a text key is
      *         not printable ASCII (0x20-0x7E; empty is allowed). `-bin` keys carry any bytes.
      * @throws \TypeError A key does not map to a list of strings.
@@ -29,7 +30,7 @@ final readonly class Metadata implements \Countable, \IteratorAggregate
             if (\preg_match('/^[^A-Z\x80-\xff]+$/D', $key) !== 1) {
                 throw new \ValueError('a metadata key must be non-empty lower-case ASCII');
             }
-            if (!\is_array($values)) {
+            if (!\is_array($values) || !\array_is_list($values)) {
                 throw new \TypeError("metadata key $key must map to a list of strings");
             }
             $binary = \str_ends_with($key, '-bin');
@@ -61,7 +62,7 @@ final readonly class Metadata implements \Countable, \IteratorAggregate
         return \count($this->entries);
     }
 
-    /** @return \Iterator<lowercase-string&non-empty-string, list<string>> Over {@see self::$entries}. */
+    /** @return \Iterator<lowercase-string&non-empty-string|int, list<string>> Over {@see self::$entries}; a key made only of digits is an int. */
     public function getIterator(): \Iterator
     {
         return new \ArrayIterator($this->entries);
