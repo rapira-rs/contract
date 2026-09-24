@@ -45,6 +45,7 @@ interface Dispatcher
      *
      * @return Work|null Null means nothing is available at this moment; the queue may fill again.
      * @throws ClosedException No more work will ever arrive.
+     * @throws \Error The current host holds one unit per worker, and that unit is unfinalized.
      */
     public function tryReceive(): ?Work;
 
@@ -64,6 +65,7 @@ interface Dispatcher
      * @throws TimeoutException No work became available within $timeout.
      * @throws ClosedException No more work will ever arrive. A shutdown throws it into a call that
      *         is already waiting.
+     * @throws \Error The current host holds one unit per worker, and that unit is unfinalized.
      */
     public function receive(int $timeout = -1): Work;
 

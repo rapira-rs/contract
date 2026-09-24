@@ -10,9 +10,10 @@ and none of that reaches PHP. Every request message crosses the boundary
 as the canonical binary-protobuf encoding of the method's input message — Connect-JSON and REST are one
 descriptor-driven transcode at the edge — and the response crosses back the same way. Framing,
 per-message compression, `grpc-timeout` parsing and per-protocol error encoding are the host's job.
-Dispatch is descriptor-driven: a descriptor image (`.binpb`, built with `buf build --as-file-descriptor-set`
-or `protoc --include_imports`) loads at boot, the `[grpc].services` entries resolve against it or the boot
-fails, and adding a PHP service method never rebuilds the host.
+Dispatch is descriptor-driven: a descriptor image loads at boot, the `[grpc].services` entries resolve
+against it or the boot fails, and adding a PHP service method never rebuilds the host. The image is a
+binary `FileDescriptorSet` with its imports: `buf build --as-file-descriptor-set -o api.binpb`, or
+`protoc --include_imports --descriptor_set_out=api.binpb -I proto proto/billing/v1/invoice.proto`.
 
 ```php
 namespace Rapira\Grpc;
