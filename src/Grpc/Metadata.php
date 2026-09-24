@@ -14,10 +14,10 @@ namespace Rapira\Grpc;
 final readonly class Metadata implements \Countable, \IteratorAggregate
 {
     /**
-     * @param array<lowercase-string&non-empty-string, list<string>> $entries Keys already normalized
-     *        to lower case; values of `-bin` keys already decoded to raw bytes — base64, padded or
-     *        not, is the boundary's job per the gRPC spec. A key made only of digits is an int key,
-     *        as PHP arrays store it.
+     * @param array<int|(lowercase-string&non-empty-string), list<string>> $entries Keys already
+     *        normalized to lower case; values of `-bin` keys already decoded to raw bytes — base64,
+     *        padded or not, is the boundary's job per the gRPC spec. PHP stores a canonical decimal
+     *        key such as `123` as an int; a digit-only key with a leading zero stays a string.
      * @throws \ValueError A key is empty, not lower-case, or not ASCII, or a value under a text key is
      *         not printable ASCII (0x20-0x7E; empty is allowed). `-bin` keys carry any bytes.
      * @throws \TypeError A key does not map to a list of strings.
@@ -62,7 +62,7 @@ final readonly class Metadata implements \Countable, \IteratorAggregate
         return \count($this->entries);
     }
 
-    /** @return \Iterator<lowercase-string&non-empty-string|int, list<string>> Over {@see self::$entries}; a key made only of digits is an int. */
+    /** @return \Iterator<int|(lowercase-string&non-empty-string), list<string>> Over {@see self::$entries}; a canonical decimal key such as `123` is an int. */
     public function getIterator(): \Iterator
     {
         return new \ArrayIterator($this->entries);
