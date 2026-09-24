@@ -10,8 +10,9 @@ and none of that reaches PHP. Every request message crosses the boundary
 as the canonical binary-protobuf encoding of the method's input message — Connect-JSON and REST are one
 descriptor-driven transcode at the edge — and the response crosses back the same way. Framing,
 per-message compression, `grpc-timeout` parsing and per-protocol error encoding are the host's job.
-Dispatch is descriptor-driven: `.proto` sources compile at boot, the `[grpc].services` entries resolve
-against them or the boot fails, and adding a PHP service method never rebuilds the host.
+Dispatch is descriptor-driven: a descriptor image (`.binpb`, built with `buf build --as-file-descriptor-set`
+or `protoc --include_imports`) loads at boot, the `[grpc].services` entries resolve against it or the boot
+fails, and adding a PHP service method never rebuilds the host.
 
 ```php
 namespace Rapira\Grpc;
@@ -88,7 +89,7 @@ interface UnaryRequest extends Call
     public function getMessage(): string;
 }
 
-/** ClientStreaming and BidiStreaming methods: handed out on the first message, the rest arriving. */
+/** ClientStreaming and BidiStreaming methods: handed out when the call opens, the messages arriving after. */
 interface StreamingRequest extends Call
 {
     public function getMessages(): Call\MessageStream;
@@ -201,7 +202,8 @@ $call instanceof StreamingResponder
   boundary; a gRPC call commits twice — headers at the stream's first yield, trailers at its
   termination — and the trailers accumulate while `respond()` is still draining, unreachable as any
   finalizer parameter. Snapshots happen on success and failure alike. The accumulator rejects the
-  reserved transport namespaces (`grpc-*`, `content-*`, Connect control headers), and the `-bin`
+  reserved transport names (the `grpc-`, `connect-`, `content-` and `trailer-` prefixes and the
+  connection-specific names that `ResponseMetadata::addHeader()` lists), and the `-bin`
   discipline is spelled by method: `addBinaryHeader()` requires the suffix, `addHeader()` rejects it,
   so the name's promise and the value's kind can never disagree.
 - A status is data, the exception a thin thrower over it — the split grpc-go and grpc-java draw.

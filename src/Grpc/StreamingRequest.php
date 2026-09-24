@@ -6,7 +6,8 @@ namespace Rapira\Grpc;
 
 /**
  * The request axis of {@see MethodKind::ClientStreaming} and {@see MethodKind::BidiStreaming} calls:
- * a stream, still arriving when the worker takes the call — it is handed out on its first message.
+ * a stream, still arriving when the worker takes the call: the call is handed out when it opens, and its
+ * messages arrive after. When the client sends no message, the first `next()` throws `ClosedException`.
  *
  * ```php
  * foreach ($call->getMessages() as $bytes) {

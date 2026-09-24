@@ -110,6 +110,9 @@ the reasoning behind its shape, lives beside its stubs:
   `TimeoutException` is "the wait elapsed". No value carries two meanings.
 - At capacity `receive()` waits and `tryReceive()` returns null — backpressure, not an error. Same
   behaviour at one unit in flight and at N.
+- The current host holds one unit per worker at a time: `receive()` and `tryReceive()` throw `\Error`
+  while that unit is unfinalized, and a wait blocks the thread. Several units in flight, with waits
+  that suspend the fiber, is the target; an SDK must not depend on it yet.
 - Waiting suspends the calling fiber, not the thread; outside a fiber it blocks the process, because the
   main context cannot be suspended. Who resumes a suspended fiber is the PHP wrapper's business, never
   this contract's: the contract names its suspension points — `receive()`, a `MessageStream` step, a
