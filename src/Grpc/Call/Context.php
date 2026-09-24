@@ -29,9 +29,11 @@ final readonly class Context
      * @param non-empty-string $method Full method name, `package.Service/Method` —
      *        `billing.v1.InvoiceService/CreateInvoice`. Resolves against
      *        {@see GrpcDispatcher::getServices()}.
-     * @param Metadata $metadata Request metadata, application keys only: the transport-reserved
-     *        namespaces (`grpc-*`, Connect control headers, `content-*`) never appear here — their
-     *        facts arrive as $deadline, $protocol and the payload itself.
+     * @param Metadata $metadata Request metadata, application keys only. The transport-reserved names
+     *        never appear here: the prefixes `grpc-`, `connect-`, `content-` and `trailer-`, and the
+     *        names `te`, `trailer`, `connection`, `keep-alive`, `proxy-connection`, `transfer-encoding`,
+     *        `upgrade`, `host` and `accept-encoding`. Their facts arrive as $deadline, $protocol and the
+     *        payload itself.
      * @param float|null $deadline Unix timestamp with microsecond precision after which the outcome is
      *        no longer wanted, parsed by the host from `grpc-timeout` or the Connect equivalent and
      *        clamped per `rapira.toml`. Null when the client named none and no default is configured.

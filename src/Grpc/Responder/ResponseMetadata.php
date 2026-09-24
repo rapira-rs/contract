@@ -37,13 +37,16 @@ interface ResponseMetadata
     /**
      * Add a response header. Repeating a name adds a value, never replaces one.
      *
-     * @param non-empty-string $name Wire key, normalized to lower case here. Reserved transport
-     *        namespaces — `grpc-*`, Connect control headers, `content-*` — are the host's to write.
-     * @param string $value ASCII.
+     * @param non-empty-string $name Wire key, normalized to lower case here. The reserved transport
+     *        names are the host's to write: the prefixes `grpc-`, `connect-`, `content-` and `trailer-`,
+     *        and the names `te`, `trailer`, `connection`, `keep-alive`, `proxy-connection`,
+     *        `transfer-encoding`, `upgrade`, `host` and `accept-encoding`.
+     * @param string $value Printable ASCII (0x20-0x7E); empty is allowed.
      * @throws HeadersAlreadyCommittedError The headers already left: a streaming response yielded.
      * @throws AlreadyFinalizedError The call was already finalized.
      * @throws \ValueError The name is reserved, carries the `-bin` suffix — that suffix promises
-     *         binary, {@see self::addBinaryHeader()} keeps the promise — or the value is not ASCII.
+     *         binary, {@see self::addBinaryHeader()} keeps the promise — or the value is not printable
+     *         ASCII.
      */
     public function addHeader(string $name, string $value): void;
 
@@ -64,7 +67,7 @@ interface ResponseMetadata
      * whole call — streaming is where they earn their keep — and close only with its finalization.
      *
      * @param non-empty-string $name
-     * @param string $value ASCII.
+     * @param string $value Printable ASCII (0x20-0x7E); empty is allowed.
      * @throws AlreadyFinalizedError The call was already finalized.
      * @throws \ValueError As {@see self::addHeader()}.
      */
