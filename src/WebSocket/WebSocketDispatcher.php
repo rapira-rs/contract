@@ -26,15 +26,12 @@ use Rapira\Dispatcher;
  *     while (true) {
  *         $unit = $dispatcher->receive();
  *         if ($unit instanceof Handshake) {
- *             $gate->answer($unit);                            // Origin, auth: accept() or reject()
- *             continue;
- *         }
- *         if ($unit instanceof Message) {
- *             $chat->relay($unit);
+ *             $gate->answer($unit);          // Origin, auth: accept() or reject()
+ *         } elseif ($unit instanceof Message) {
+ *             $chat->handle($unit);          // ends with $unit->complete()
  *         } else {
- *             $presence->leave($unit->getAttachment());
+ *             $presence->leave($unit);       // a Close; ends with $unit->complete()
  *         }
- *         $unit->complete();
  *     }
  * } catch (\Rapira\Exception\ClosedException) {
  *     // drained
@@ -43,7 +40,8 @@ use Rapira\Dispatcher;
  *
  * The units of one connection come in order, and the next one is handed out only after the previous one
  * is finalized — to any worker of the pool — so a connection is processed sequentially while different
- * connections are not tied to each other.
+ * connections are not tied to each other. A unit kind added later arrives only on connections whose
+ * {@see Handshake::accept()} asked for it.
  */
 interface WebSocketDispatcher extends Dispatcher
 {

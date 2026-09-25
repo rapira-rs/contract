@@ -21,6 +21,9 @@ function get_dispatcher(): Dispatcher {}
 /** The mode the host launched this process in. Fixed for the life of the process. */
 function get_mode(): Mode {}
 
+/** The plugins the host serves, by their name(): ['http', 'websocket']. Empty outside the host. */
+function get_plugins(): array {}
+
 /** Worker mode only: serves the next SAPI request through $handler; false once the host is done. */
 function handle_request(callable $handler): bool {}
 
@@ -191,6 +194,8 @@ getting there at all.
    client is not a stream of work units and needs a second acquisition path, without bringing back
    config objects. `Rapira\WebSocket\get_connection()` is the first such path: a plain function in the
    plugin's namespace, reachable from every pool, parameterized by nothing but the id it looks up.
+   `get_plugins()` is the discovery half: which such paths the host can answer at all, read from the
+   host rather than repeated in the application's configuration.
 
 ## References
 

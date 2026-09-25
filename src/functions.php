@@ -29,6 +29,20 @@ if (!\extension_loaded('rapira')) {
     }
 
     /**
+     * The plugins the running host serves, by the names their {@see Dispatcher::name()} answers — the root
+     * sections of `rapira.toml`: `http`, `grpc`, `websocket`.
+     *
+     * The same list in every process the host started, in every mode, fixed for the life of the process.
+     * Empty in a process the host did not start — a console command, a supervisor-run consumer.
+     *
+     * @return list<non-empty-string>
+     */
+    function get_plugins(): array
+    {
+        return [];
+    }
+
+    /**
      * Serve the next request in {@see Mode::Worker}.
      *
      * Blocks until the host has a request, exposes it through the SAPI superglobals and runs $handler for
@@ -83,18 +97,16 @@ namespace Rapira\WebSocket;
 
 if (!\extension_loaded('rapira')) {
     /**
-     * A WebSocket connection the host holds, by its {@see Connection::getId()} — from any pool, so an HTTP
-     * handler or a job pushes to a client the same way a `websocket` worker does.
+     * A WebSocket connection this host holds, by its {@see Connection::getId()} — from every pool the host
+     * started, in any mode, so an HTTP handler or a job pushes to a client the same way a `websocket` worker
+     * does.
      *
-     * Never checks liveness: an id whose connection has ended still yields a handle, and what it sends is
-     * discarded, as on any connection that is closing or closed. Ids are never reused, so a stale one reaches
-     * nobody.
+     * Never checks liveness: any string yields a handle, and an id that is unknown, malformed, held by
+     * another host or whose connection has ended discards what it sends, as on any connection that is
+     * closing or closed. Ids are never reused, so a stale one reaches nobody.
      *
-     * @param non-empty-string $id
-     * Whether the host serves one is deployment knowledge, the same `rapira.toml` that configures the SDK:
-     * code that pushes knows it from its own configuration rather than by asking.
-     *
-     * @throws Exception\NoWebSocketError The host serves no `websocket` section, so no connection exists.
+     * @throws Exception\NoWebSocketError The host serves no `websocket` section, or this process was not
+     *         started by the host — {@see \Rapira\get_plugins()} lacks `websocket` in both cases.
      */
     function get_connection(string $id): Connection
     {
