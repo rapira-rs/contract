@@ -80,3 +80,24 @@ function log(string $message, LogLevel $level = LogLevel::Info, array $context =
         'context' => $context,
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
 }
+
+namespace Rapira\WebSocket;
+
+/**
+ * A WebSocket connection the host holds, by its {@see Connection::getId()} — from any pool, so an HTTP
+ * handler or a job pushes to a client the same way a `websocket` worker does.
+ *
+ * Never checks liveness: an id whose connection has ended still yields a handle, and what it sends is
+ * discarded, as on any connection that is closing or closed. Ids are never reused, so a stale one reaches
+ * nobody.
+ *
+ * @param non-empty-string $id
+ * Whether the host serves one is deployment knowledge, the same `rapira.toml` that configures the SDK:
+ * code that pushes knows it from its own configuration rather than by asking.
+ *
+ * @throws Exception\NoWebSocketError The host serves no `websocket` section, so no connection exists.
+ */
+function get_connection(string $id): Connection
+{
+    throw new Exception\NoWebSocketError('WebSocket connections exist only on a host serving the websocket section');
+}
