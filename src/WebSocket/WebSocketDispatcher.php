@@ -11,8 +11,9 @@ use Rapira\Dispatcher;
  * the `websocket` section of `rapira.toml`.
  *
  * The host terminates the protocol and holds every connection; the worker never holds one. What it takes
- * from here are short units — a connection asking to open, a message that arrived, a connection that
- * ended — each finalized before the worker moves on, so no worker is pinned by a connection that stays open
+ * from here are short units — a connection asking to open, a message that arrived, a client asking to join
+ * or publish to a private channel, a connection that ended — each finalized before the worker moves on, so
+ * no worker is pinned by a connection that stays open
  * for hours. One worker script can serve both pools, telling them apart by {@see Dispatcher::name()}:
  *
  * ```php
@@ -29,6 +30,8 @@ use Rapira\Dispatcher;
  *             $gate->answer($unit);          // Origin, auth: accept() or reject()
  *         } elseif ($unit instanceof Message) {
  *             $chat->handle($unit);          // ends with $unit->complete()
+ *         } elseif ($unit instanceof Subscribe || $unit instanceof Publish) {
+ *             $rooms->answer($unit);         // allow() or deny()
  *         } else {
  *             $presence->leave($unit);       // a Close; ends with $unit->complete()
  *         }
@@ -41,18 +44,19 @@ use Rapira\Dispatcher;
  * The units of one connection come in order, and the next one is handed out only after the previous one
  * is finalized — to any worker of the pool — so a connection is processed sequentially while different
  * connections are not tied to each other. A unit kind added later arrives only on connections whose
- * {@see Handshake::accept()} asked for it.
+ * {@see Handshake::accept()} asked for it: {@see Subscribe} and {@see Publish} come only on connections
+ * accepted with `rapira.v1` while `rapira.toml` has a `channels` section.
  */
 interface WebSocketDispatcher extends Dispatcher
 {
     /**
      * Take a unit if one is available right now. Never blocks.
      *
-     * @return Handshake|Message|Close|null Null means nothing is available at this moment; the queue may
-     *         fill again.
+     * @return Handshake|Message|Subscribe|Publish|Close|null Null means nothing is available at this
+     *         moment; the queue may fill again.
      * @throws \Rapira\Exception\ClosedException No more units will ever arrive.
      */
-    public function tryReceive(): Handshake|Message|Close|null;
+    public function tryReceive(): Handshake|Message|Subscribe|Publish|Close|null;
 
     /**
      * Wait up to $timeout for the next unit, with {@see Dispatcher::receive()}'s waiting semantics: the
@@ -68,7 +72,7 @@ interface WebSocketDispatcher extends Dispatcher
      * @throws \Rapira\Exception\TimeoutException No unit became available within $timeout.
      * @throws \Rapira\Exception\ClosedException No more units will ever arrive.
      */
-    public function receive(int $timeout = -1): Handshake|Message|Close;
+    public function receive(int $timeout = -1): Handshake|Message|Subscribe|Publish|Close;
 
     /**
      * Live plugin counters. Observability only — never a control-flow source.

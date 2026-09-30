@@ -77,22 +77,34 @@ interface Handshake extends Work
      * Accept the handshake, opening the connection, and finalize this unit. The host answers `101` over
      * HTTP/1.1 and `200` over HTTP/2 and HTTP/3, then sends what {@see self::getConnection()} queued.
      *
-     * The connection's {@see Message} units follow, then exactly one {@see Close}.
+     * The connection's {@see Message} units follow, then exactly one {@see Close}. Choosing `rapira.v1`
+     * while `rapira.toml` has a `channels` section turns on the channel wire format, and with it
+     * {@see Subscribe} and {@see Publish} units; without that section `rapira.v1` is an ordinary string.
      *
      * @param non-empty-string|null $subprotocol One of {@see self::getRequestedSubprotocols()}, or null to
      *        pick none. A browser that offered any fails a connection accepted with none.
      * @param array<non-empty-string, list<string>> $headers Fields to add to the answer — `set-cookie` is the
      *        usual one. The framing and hop-by-hop fields — `content-length`, `transfer-encoding`,
      *        `connection`, `upgrade` and the rest — are dropped.
-     * @param string $attachment Bytes the host keeps with the connection and returns on each of its units —
-     *        {@see Message::getAttachment()}, {@see Close::getAttachment()} — whichever worker takes them.
+     * @param string $attachment Bytes the host keeps with the connection and returns on each of its later
+     *        units — {@see Message::getAttachment()}, {@see Subscribe::getAttachment()},
+     *        {@see Publish::getAttachment()}, {@see Close::getAttachment()} — whichever worker takes them.
      *        Never sent to the client and never logged. Its size limit is in `rapira.toml`.
+     * @param non-empty-string|null $user A label for who owns the connection, usually the application's user
+     *        id: 1–128 bytes of `A-Z`, `a-z`, `0-9`, `_`, `-`, `.`, `@`. The host shows it in logs and
+     *        metrics, and lets the connection join user-limited channels ending in `#<user>`. It is not
+     *        handed back on later units; keep what PHP needs in $attachment.
      * @throws AlreadyFinalizedError The handshake was already answered.
      * @throws \ValueError $subprotocol was not offered; $headers carries a `sec-websocket-*` field, which is
      *         the host's to write, or a name or value not representable on the wire; $attachment is over the
-     *         limit. Nothing is finalized then.
+     *         limit; $user is invalid. Nothing is finalized then.
      */
-    public function accept(?string $subprotocol = null, array $headers = [], string $attachment = ''): void;
+    public function accept(
+        ?string $subprotocol = null,
+        array $headers = [],
+        string $attachment = '',
+        ?string $user = null,
+    ): void;
 
     /**
      * Refuse the handshake with an HTTP response, and finalize this unit. What was queued on

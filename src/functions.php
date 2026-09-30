@@ -112,4 +112,23 @@ if (!\extension_loaded('rapira')) {
     {
         throw new Exception\NoWebSocketError('WebSocket connections exist only on a host serving the websocket section');
     }
+
+    /**
+     * Send $data to every connection subscribed to $channel on this host — from every pool the host started,
+     * in any mode. `rapira.v1` clients get `{"channel": "<channel>", "data": "<data>"}`; plain ones get $data
+     * as a text message.
+     *
+     * Never waits, and a channel nobody joined is not an error. Ordered like {@see Connection::send()}: under
+     * a unit of connection X, before anything sent under X's next unit; from other pools, per worker. It does
+     * not reach connections on another node behind the same load balancer.
+     *
+     * @param non-empty-string $channel 1–255 bytes of `A-Z`, `a-z`, `0-9`, `_`, `-`, `.`, `:`, `#`, `@`.
+     * @throws \ValueError The channel name is invalid, or $data is not valid UTF-8.
+     * @throws Exception\NoWebSocketError The host serves no `websocket` section, or this process was not
+     *         started by the host.
+     */
+    function publish(string $channel, string $data): void
+    {
+        throw new Exception\NoWebSocketError('WebSocket channels exist only on a host serving the websocket section');
+    }
 }

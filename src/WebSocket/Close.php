@@ -46,8 +46,9 @@ interface Close extends Work
     /**
      * The code this side closed with, whether or not the frame got through: a worker's
      * {@see Connection::close()}, including one queued before the handshake was answered, or the host — over
-     * a limit, on an idle connection (`1001`), at shutdown, after a lost {@see Message}, or failing the
-     * connection for a protocol error (`1002`, `1007`). Null when this side only answered the client's
+     * a limit, on an idle connection (`1001`), past the queue timeout (`1013`), at shutdown, after a lost
+     * {@see Message}, or failing the connection for a protocol error (`1002`, `1007`) — a malformed
+     * `rapira.v1` frame is one. Null when this side only answered the client's
      * Close, or closed nothing.
      *
      * @return int<1000, 4999>|null

@@ -6,8 +6,8 @@ namespace Rapira\WebSocket;
 
 /**
  * The sending side of one WebSocket connection the host holds. Handed out by
- * {@see Handshake::getConnection()}, {@see Message::getConnection()}, {@see Close::getConnection()} and, from
- * any pool, by {@see get_connection()}.
+ * {@see Handshake::getConnection()}, {@see Message::getConnection()}, {@see Subscribe::getConnection()},
+ * {@see Publish::getConnection()}, {@see Close::getConnection()} and, from any pool, by {@see get_connection()}.
  *
  * A handle, not a state: it carries no data and answers no liveness question. Sending to a connection that
  * has ended is not an error — the message is discarded, as the WHATWG `send()` discards on a closing
@@ -41,9 +41,35 @@ interface Connection
      * limit in `rapira.toml` is closed by the host with `1008` rather than holding the caller. Delivery is
      * never confirmed, and on a connection that is closing or closed the message is discarded.
      *
+     * On a `rapira.v1` connection, text goes out as `{"message": "<payload>"}`, so it can never be mistaken
+     * for a publication or a reply. Binary goes out unwrapped.
+     *
      * @throws \ValueError $type is {@see MessageType::Text} and $payload is not valid UTF-8 (RFC 6455 §5.6).
      */
     public function send(string $payload, MessageType $type = MessageType::Text): void;
+
+    /**
+     * Join the connection to a channel, so it receives what {@see publish()} and clients publish there.
+     * Never waits, and ordered like {@see self::send()}. On a connection that is closing or closed it does
+     * nothing. Under a {@see Handshake} it waits for the answer, and {@see Handshake::reject()} discards it.
+     *
+     * A `rapira.v1` client is told with `{"subscribed": "<channel>"}`; a plain one just starts receiving.
+     * Server-side joins count toward the channel limit in `rapira.toml` but are never refused.
+     *
+     * @param non-empty-string $channel 1–255 bytes of `A-Z`, `a-z`, `0-9`, `_`, `-`, `.`, `:`, `#`, `@`.
+     * @throws \ValueError The channel name is invalid. Checked before the connection is looked at.
+     */
+    public function subscribe(string $channel): void;
+
+    /**
+     * Leave a channel. Never waits, and ordered like {@see self::send()}. Does nothing on a connection that
+     * is closing or closed, or that never joined the channel. A `rapira.v1` client is told with
+     * `{"unsubscribed": "<channel>"}`.
+     *
+     * @param non-empty-string $channel
+     * @throws \ValueError The channel name is invalid. Checked before the connection is looked at.
+     */
+    public function unsubscribe(string $channel): void;
 
     /**
      * Start the closing handshake (RFC 6455 §7.1.2). Messages sent before it still go out first; later ones

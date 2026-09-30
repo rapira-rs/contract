@@ -104,7 +104,7 @@ the reasoning behind its shape, lives beside its stubs:
 - [`Rapira\Http`](src/Http/README.md) — the request/response exchange, framing, content coding.
 - [`Rapira\Grpc`](src/Grpc/README.md) — the call and its responder, streams, statuses, metadata.
 - [`Rapira\WebSocket`](src/WebSocket/README.md) — host-held connections, handed to PHP as handshake,
-  message and close units.
+  message, subscribe, publish and close units; channels the host fans out.
 
 ## Rules
 
@@ -192,8 +192,9 @@ getting there at all.
 
 1. **Non-dispatcher plugins.** A logger richer than `log()` — its own target, its own sink — or a KV
    client is not a stream of work units and needs a second acquisition path, without bringing back
-   config objects. `Rapira\WebSocket\get_connection()` is the first such path: a plain function in the
-   plugin's namespace, reachable from every pool, parameterized by nothing but the id it looks up.
+   config objects. `Rapira\WebSocket\get_connection()` and `publish()` are the first such paths: plain
+   functions in the plugin's namespace, reachable from every pool, parameterized by nothing but the id or
+   channel they address.
    `get_plugins()` is the discovery half: which such paths the host can answer at all, read from the
    host rather than repeated in the application's configuration.
 
