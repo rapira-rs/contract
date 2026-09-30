@@ -26,9 +26,10 @@ final readonly class Request
      * @param non-empty-string $target Request-target byte-for-byte, never parsed and never re-encoded —
      *        HTTP Message Signatures and SigV4 sign this exact string. On HTTP/1.1 it is the
      *        request-target as it appeared on the request line (RFC 9112); on h2 and h3, which have no
-     *        request line, the `:path` pseudo-header — and the authority for `CONNECT`, which travels
-     *        without one. Also the only honest representation of asterisk-form: `OPTIONS *` has
-     *        `target = "*"` while $uri falls back to the authority root.
+     *        request line, the `:path` pseudo-header — and the authority for a tunnel `CONNECT`, which
+     *        travels without one. An extended `CONNECT`, the one carrying `:protocol` (RFC 8441, RFC
+     *        9220), has a `:path`, and that is its target. Also the only honest representation of
+     *        asterisk-form: `OPTIONS *` has `target = "*"` while $uri falls back to the authority root.
      * @param non-empty-string|null $authority The authority the client named, byte-for-byte, whichever
      *        slot carried it: `:authority` on h2 and h3 — the `Host` header when only that was sent —
      *        and the `Host` header on HTTP/1.1. Null when the request named none, which HTTP/1.0 alone

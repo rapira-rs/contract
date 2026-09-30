@@ -21,6 +21,9 @@ function get_dispatcher(): Dispatcher {}
 /** The mode the host launched this process in. Fixed for the life of the process. */
 function get_mode(): Mode {}
 
+/** The plugins the host serves, by their name(): ['http', 'websocket']. Empty outside the host. */
+function get_plugins(): array {}
+
 /** Worker mode only: serves the next SAPI request through $handler; false once the host is done. */
 function handle_request(callable $handler): bool {}
 
@@ -100,6 +103,8 @@ the reasoning behind its shape, lives beside its stubs:
 
 - [`Rapira\Http`](src/Http/README.md) — the request/response exchange, framing, content coding.
 - [`Rapira\Grpc`](src/Grpc/README.md) — the call and its responder, streams, statuses, metadata.
+- [`Rapira\WebSocket`](src/WebSocket/README.md) — host-held connections, handed to PHP as handshake,
+  message, subscribe, publish and close units; channels the host fans out.
 
 ## Rules
 
@@ -123,7 +128,8 @@ the reasoning behind its shape, lives beside its stubs:
   listener has no IP and its connecting peer usually no name at all, so "a port exists" is a fact the
   type states — not a zero sentinel carrying two meanings. They live in `Rapira\`: HTTP and gRPC both
   put them on their request shapes, and what plugins share, the root holds.
-- Each plugin owns a first-level namespace: `Rapira\Http`, `Rapira\Grpc`, later `Rapira\Jobs`. `Rapira\`
+- Each plugin owns a first-level namespace: `Rapira\Http`, `Rapira\Grpc`, `Rapira\WebSocket`, later
+  `Rapira\Jobs`. `Rapira\`
   holds only what they share — `Dispatcher`, `Work`, `DispatcherInfo`, `LogLevel`, the address types,
   `Tls`, the functions — and `Rapira\Exception\` only the exceptions more than one plugin can throw. A plugin's
   own live the same way, in its own `Exception\` sub-namespace — `Http\Exception\HeadAlreadyWrittenError` —
@@ -186,7 +192,11 @@ getting there at all.
 
 1. **Non-dispatcher plugins.** A logger richer than `log()` — its own target, its own sink — or a KV
    client is not a stream of work units and needs a second acquisition path, without bringing back
-   config objects.
+   config objects. `Rapira\WebSocket\get_connection()` and `publish()` are the first such paths: plain
+   functions in the plugin's namespace, reachable from every pool, parameterized by nothing but the id or
+   channel they address.
+   `get_plugins()` is the discovery half: which such paths the host can answer at all, read from the
+   host rather than repeated in the application's configuration.
 
 ## References
 
