@@ -13,5 +13,8 @@
     "minimum-stability": "dev",
     "require": {
         "php": "^8.4"
+    },
+    "suggest": {
+        "rapira/testing": "Scripts the stub functions in tests, outside a Rapira process"
     }
 }

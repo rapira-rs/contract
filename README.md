@@ -141,6 +141,10 @@ the reasoning behind its shape, lives beside its stubs:
 - Behaviour is an interface, data is a final readonly class with a public constructor. So every type is
   either mockable or constructible, and a test never needs the host: a fake `StreamingRequest` returns an
   array-backed `MessageStream`, a fixture `Context` carries a `new Metadata([...])`.
+- The global functions cannot be redeclared per test, so without the extension each stub delegates to an
+  `Internal\Runtime`, whose own answers are the fallbacks: `Classic`, no dispatcher, no worker requests. A
+  test double extends it and is put in place with `Internal\Double::setRuntime()`; scripted doubles and
+  test tooling live in `rapira/testing`.
 - The consumer is Rapira's SDK, not application code. Test for any addition: could the SDK compute it
   itself? Then it does not belong here — unless the fact lives in the type system: an SDK can wrap
   `next()` into an iterable value, but only `MessageStream` itself can pass an `iterable` parameter.
