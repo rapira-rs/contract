@@ -21,7 +21,7 @@ function get_dispatcher(): Dispatcher {}
 /** The mode the host launched this process in. Fixed for the life of the process. */
 function get_mode(): Mode {}
 
-/** Worker mode only: serves the next SAPI request through $handler; false once the host is done. */
+/** Throws Exception\NotInWorkerModeError outside Worker mode. Serves the next SAPI request through $handler; false once the host is done. */
 function handle_request(callable $handler): bool {}
 
 /** Version of the running Rapira server. */
@@ -159,8 +159,8 @@ the top of the worker, never a handler's.
 `AlreadyFinalizedError` extends `\Error` — nobody catches it, the script fatals, the host cleans up. Not
 `\LogicException`, which frameworks catch broadly enough to swallow it. The error/exception split is left
 to the native hierarchy, so `instanceof \Error` keeps meaning "your code is wrong" and no second marker is
-needed for it. `NoDispatcherError` is the same shape: a worker script running where no dispatcher
-exists is wrong by construction.
+needed for it. `NoDispatcherError` and `NotInWorkerModeError` are the same shape: a script asking for a
+dispatcher or for the next request in a mode that does not provide it is wrong by construction.
 
 `WorkDiscardedException` is finalizing a unit the host had already closed — expired deadline, drain, gone
 client, lease lost to another worker. The worker broke no rule, so it is a runtime exception and not an

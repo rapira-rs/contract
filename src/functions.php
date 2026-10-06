@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira;
+namespace Rapira {
 
 if (!\function_exists('Rapira\get_version')) {
     /**
@@ -38,10 +38,13 @@ if (!\function_exists('Rapira\get_version')) {
      * {@see Mode::Dispatcher} serves them from {@see get_dispatcher()} instead.
      *
      * @param callable(): bool $handler
+     *
+     * @throws Exception\NotInWorkerModeError Called outside {@see Mode::Worker} — the host hands requests
+     *         to this process some other way, or not at all.
      */
     function handle_request(callable $handler): bool
     {
-        return false;
+        throw new Exception\NotInWorkerModeError('Requests are only handed out in Mode::Worker');
     }
 
     /**
@@ -64,10 +67,13 @@ if (!\function_exists('Rapira\get_version')) {
      * would bury the original error.
      * On queue overflow the message is dropped and the host reports the loss itself.
      *
-     * @param array<non-empty-string, mixed> $context JSON-serializable context for structured logging.
-     *        The `exception` key is special: when present it must be a `\Throwable`, serialized as a
-     *        structured error. A value that cannot be serialized does not throw either: the record is
-     *        kept, the value is replaced with a placeholder, and the loss is noted in the record itself.
+     * @param array<array-key, mixed> $context Attached to the record as a single JSON string; a list
+     *        encodes as a JSON array, anything else as an object.
+     *        A `\Throwable` under any top-level key is serialized as a structured error — class, message,
+     *        code, file, line and its chain of previous exceptions — since `json_encode()` would see none
+     *        of that private state; nested deeper, it serializes as an empty object.
+     *        A value that cannot be serialized does not throw either: the record is kept and the value
+     *        becomes `null`, with nothing in the record marking the loss.
      */
     function log(string $message, LogLevel $level = LogLevel::Info, array $context = []): void
     {
@@ -75,6 +81,28 @@ if (!\function_exists('Rapira\get_version')) {
             'level' => $level->name,
             'message' => $message,
             'context' => $context,
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+        ], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
     }
+}
+
+}
+
+namespace {
+
+if (!\function_exists('rapira_finish_request')) {
+    /**
+     * Send the response to the client now, in {@see \Rapira\Mode::Classic} and {@see \Rapira\Mode::Worker}.
+     *
+     * The script keeps running after it, but nothing it emits reaches the client any more. A userland
+     * output handler that fails while being flushed fails the request like a fatal error.
+     *
+     * @throws \Error Called in {@see \Rapira\Mode::Dispatcher}: there the response belongs to the unit
+     *         {@see \Rapira\Dispatcher::receive()} returned, and finalizing that unit is what sends it.
+     */
+    function rapira_finish_request(): bool
+    {
+        return false;
+    }
+}
+
 }
