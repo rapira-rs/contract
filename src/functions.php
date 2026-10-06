@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rapira {
 
+use Rapira\Internal\Double;
+
 if (!\function_exists('Rapira\get_version')) {
     /**
      * Version of the running Rapira server.
@@ -12,7 +14,7 @@ if (!\function_exists('Rapira\get_version')) {
      */
     function get_version(): string
     {
-        return '0.0.0';
+        return Double::runtime()->version();
     }
 
     /**
@@ -25,7 +27,7 @@ if (!\function_exists('Rapira\get_version')) {
      */
     function get_mode(): Mode
     {
-        return Mode::Classic;
+        return Double::runtime()->mode();
     }
 
     /**
@@ -44,7 +46,7 @@ if (!\function_exists('Rapira\get_version')) {
      */
     function handle_request(callable $handler): bool
     {
-        throw new Exception\NotInWorkerModeError('Requests are only handed out in Mode::Worker');
+        return Double::runtime()->handleRequest($handler);
     }
 
     /**
@@ -56,7 +58,7 @@ if (!\function_exists('Rapira\get_version')) {
      */
     function get_dispatcher(): Dispatcher
     {
-        throw new Exception\NoDispatcherError('Dispatcher is only available in Mode::Dispatcher');
+        return Double::runtime()->dispatcher();
     }
 
     /**
@@ -77,17 +79,15 @@ if (!\function_exists('Rapira\get_version')) {
      */
     function log(string $message, LogLevel $level = LogLevel::Info, array $context = []): void
     {
-        \error_log(json_encode([
-            'level' => $level->name,
-            'message' => $message,
-            'context' => $context,
-        ], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+        Double::runtime()->log($message, $level, $context);
     }
 }
 
 }
 
 namespace {
+
+use Rapira\Internal\Double;
 
 if (!\function_exists('rapira_finish_request')) {
     /**
@@ -101,7 +101,7 @@ if (!\function_exists('rapira_finish_request')) {
      */
     function rapira_finish_request(): bool
     {
-        return false;
+        return Double::runtime()->finishRequest();
     }
 }
 
