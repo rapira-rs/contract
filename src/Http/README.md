@@ -21,6 +21,13 @@ interface HttpDispatcher extends \Rapira\Dispatcher
     public function getInfo(): HttpDispatcherInfo;
 }
 
+/** The shared counters, plus the server identity the `http` section configures. */
+interface HttpDispatcherInfo extends \Rapira\DispatcherInfo
+{
+    public function serverName(): string;  // `server_name`, `localhost` when unset
+    public function serverPort(): int;     // `server_port`; when unset, the listen port, 80 on a unix socket
+}
+
 /** One request/response exchange: the request data plus the verbs that answer it. */
 interface Exchange extends \Rapira\Work
 {
@@ -106,6 +113,11 @@ exchange" all name this shape the same way.
   only inside the synthesized `$uri`, indistinguishable from the listener fallback. Go promotes `Host` into
   a field and deletes the header from the map — here the promotion is additive: nothing enters or leaves
   `$headers`.
+- `$authority` is what the client named, `HttpDispatcherInfo::serverName()`/`serverPort()` what the server
+  is configured as. Worker mode fills `SERVER_NAME` and `SERVER_PORT` from the latter, so a dispatcher
+  hydrating server params reads them too — deriving either from `$authority` passes a client value off as
+  a server one, and `$server` is a socket, which on a unix listener has no port. They sit on the info,
+  not on `Request`, because they belong to the section and not to the exchange.
 
 ## Framing
 
