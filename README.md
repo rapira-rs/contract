@@ -21,7 +21,7 @@ function get_dispatcher(): Dispatcher {}
 /** The mode the host launched this process in. Fixed for the life of the process. */
 function get_mode(): Mode {}
 
-/** Throws Exception\NotInWorkerModeError outside Worker mode. Serves the next SAPI request through $handler; false once the host is done. */
+/** Throws Exception\NotInWorkerModeError outside Worker mode. Serves the next SAPI request through $handler; false once the host will hand out no more requests to this app instance. */
 function handle_request(callable $handler): bool {}
 
 /** Version of the running Rapira server. */
