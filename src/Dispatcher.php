@@ -44,7 +44,7 @@ interface Dispatcher
      * Take a unit of work if one is available right now. Never blocks.
      *
      * @return Work|null Null means nothing is available at this moment; the queue may fill again.
-     * @throws ClosedException No more work will ever arrive.
+     * @throws ClosedException No more work will arrive for this app instance.
      * @throws \Error The current host holds one unit per worker, and that unit is unfinalized.
      */
     public function tryReceive(): ?Work;
@@ -63,8 +63,8 @@ interface Dispatcher
      *        all and throws {@see TimeoutException} at once when nothing is available — unlike
      *        {@see self::tryReceive()}, which returns null for that.
      * @throws TimeoutException No work became available within $timeout.
-     * @throws ClosedException No more work will ever arrive. A shutdown throws it into a call that
-     *         is already waiting.
+     * @throws ClosedException No more work will arrive for this app instance. A stop or an app
+     *         restart throws it into a call that is already waiting.
      * @throws \Error The current host holds one unit per worker, and that unit is unfinalized.
      */
     public function receive(int $timeout = -1): Work;

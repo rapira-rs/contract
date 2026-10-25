@@ -44,7 +44,7 @@ interface GrpcDispatcher extends Dispatcher
      *
      * @return UnaryCall|ServerStreamingCall|ClientStreamingCall|BidiStreamingCall|null Null means
      *         nothing is available at this moment; the queue may fill again.
-     * @throws \Rapira\Exception\ClosedException No more calls will ever arrive.
+     * @throws \Rapira\Exception\ClosedException No more calls will arrive for this app instance.
      */
     public function tryReceive(): UnaryCall|ServerStreamingCall|ClientStreamingCall|BidiStreamingCall|null;
 
@@ -54,7 +54,7 @@ interface GrpcDispatcher extends Dispatcher
      *
      * @param int<-1, max> $timeout Microseconds to wait; -1 waits indefinitely, 0 does not wait at all.
      * @throws \Rapira\Exception\TimeoutException No call became available within $timeout.
-     * @throws \Rapira\Exception\ClosedException No more calls will ever arrive.
+     * @throws \Rapira\Exception\ClosedException No more calls will arrive for this app instance.
      */
     public function receive(int $timeout = -1): UnaryCall|ServerStreamingCall|ClientStreamingCall|BidiStreamingCall;
 

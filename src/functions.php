@@ -35,8 +35,8 @@ if (!\function_exists('Rapira\get_version')) {
      *
      * Blocks until the host has a request, exposes it through the SAPI superglobals and runs $handler for
      * it; the response is whatever the handler emitted through the SAPI — `header()`, `echo` — by the time
-     * it returns. Returns false once the host will hand out no more requests, so the worker loop is
-     * `while (handle_request($handler));`. Requests are not units of work here, which is why
+     * it returns. Returns false once the host will hand out no more requests to this app instance, so
+     * the worker loop is `while (handle_request($handler));`. Requests are not units of work here, which is why
      * {@see Mode::Dispatcher} serves them from {@see get_dispatcher()} instead.
      *
      * @param callable(): bool $handler
