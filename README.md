@@ -21,7 +21,7 @@ function get_dispatcher(): Dispatcher {}
 /** The mode the host launched this process in. Fixed for the life of the process. */
 function get_mode(): Mode {}
 
-/** Throws Exception\NotInWorkerModeError outside Worker mode. Serves the next SAPI request through $handler; false once the host is done. */
+/** Throws Exception\NotInWorkerModeError outside Worker mode. Serves the next SAPI request through $handler; false once the host will hand out no more requests to this app instance. */
 function handle_request(callable $handler): bool {}
 
 /** Version of the running Rapira server. */
@@ -44,14 +44,14 @@ interface Dispatcher
      * Never waits.
      *
      * @return Work|null Null means nothing available at this moment; the queue may fill again.
-     * @throws Exception\ClosedException No more work will ever arrive.
+     * @throws Exception\ClosedException No more work will arrive for this app instance.
      */
     public function tryReceive(): ?Work;
 
     /**
      * @param int<-1, max> $timeout Microseconds to wait; -1 waits indefinitely, 0 not at all.
      * @throws Exception\TimeoutException No work became available within $timeout.
-     * @throws Exception\ClosedException No more work will ever arrive.
+     * @throws Exception\ClosedException No more work will arrive for this app instance.
      */
     public function receive(int $timeout = -1): Work;
 
@@ -106,8 +106,8 @@ the reasoning behind its shape, lives beside its stubs:
 - PHP pulls, the host never pushes. The loop belongs to userland; without it there is no scheduler, no work
   between units, no event loop integration.
 - Config flows TOML → host → PHP. PHP discovers what it serves and never parameterizes a plugin.
-- One spelling per fact: `null` is "nothing at this moment", `ClosedException` is "no more work, ever",
-  `TimeoutException` is "the wait elapsed". No value carries two meanings.
+- One spelling per fact: `null` is "nothing at this moment", `ClosedException` is "no more work for this
+  app instance", `TimeoutException` is "the wait elapsed". No value carries two meanings.
 - At capacity `receive()` waits and `tryReceive()` returns null — backpressure, not an error. Same
   behaviour at one unit in flight and at N.
 - The current host holds one unit per worker at a time: `receive()` and `tryReceive()` throw `\Error`
