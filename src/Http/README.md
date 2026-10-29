@@ -56,10 +56,10 @@ final readonly class Request
     public function __construct(
         public string $method,                   // byte-for-byte, case-sensitive (RFC 9110 §9.1)
         public string $uri,                      // absolute, synthesized: listener scheme + $authority
-        public string $target,                   // request-target byte-for-byte — what SigV4 signed; :path on h2/h3
-        public ?string $authority,               // :authority or Host, byte-for-byte; null when none was named
+        public string $target,                   // request-target as sent, absolute-form normalized, no fragment; :path on h2/h3
+        public ?string $authority,               // :authority, Host or the absolute-form authority; null when none was named
         public string $protocol,                 // HTTP/1.1, HTTP/2, HTTP/3
-        public array $headers,                   // as received, no pseudo-headers, not normalized
+        public array $headers,                   // lowercase names, no pseudo-headers, values not normalized
         public string|Multipart $body,           // bytes as received — or the parsed form; never both, by type
         public InetAddress|UnixAddress $remote,  // the peer's end; a unix peer is usually unnamed
         public InetAddress|UnixAddress $server,  // which socket took the call, not the Host header
