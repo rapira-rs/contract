@@ -67,8 +67,8 @@ interface Exchange extends Work
      *
      * @param int<100, 599> $status Any code the protocol allows, registered or not — `499` and `520` are
      *        as writable as `404`.
-     * @param array<non-empty-string, list<string>> $headers One entry per value, the shape
-     *        {@see Request::$headers} arrives in.
+     * @param array<int|non-empty-string, list<string>> $headers One entry per value, the shape
+     *        {@see Request::$headers} arrives in. An int key is sent as its decimal text.
      * @throws HeadAlreadyWrittenError The final head has already been written.
      * @throws WorkDiscardedException The host closed the exchange first.
      * @throws \ValueError The status is outside `100`–`599`, or a header name or value is not
@@ -110,8 +110,10 @@ interface Exchange extends Work
      * several calls with `$eos: false`.
      *
      * $path is opened by the host and not by PHP, so `open_basedir` does not constrain it and the host's
-     * own configured root does. A slice is never content-coded on the way out, since `content-range` counts
-     * offsets in the representation the handler sliced.
+     * own configured root does. The host checks the root and opens the file in two steps, so a local user
+     * who can write below the root can put a symlink into the path between the steps: keep the root
+     * writable by trusted users only. A slice is never content-coded on the way out, since `content-range`
+     * counts offsets in the representation the handler sliced.
      *
      * @param non-empty-string $path
      * @param int<0, max> $offset Byte to start from.
@@ -140,7 +142,7 @@ interface Exchange extends Work
      * in between is fine — `writeHead(200)` followed by trailers spells a trailers-only response out
      * explicitly, where an implicit `200` would be an accident.
      *
-     * @param array<non-empty-string, list<string>> $trailers
+     * @param array<int|non-empty-string, list<string>> $trailers An int key is sent as its decimal text.
      * @throws HeadNotWrittenError No final head has been committed yet.
      * @throws AlreadyFinalizedError The response already ended.
      * @throws WorkDiscardedException The host closed the exchange first.

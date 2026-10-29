@@ -30,20 +30,24 @@ final readonly class Request
      *        in the RFC 9110 §4.2.3 normal form. The host also does this for `OPTIONS`, where the
      *        normal form keeps the path empty, so a server-wide `OPTIONS http://h` (RFC 9112 §3.2.4)
      *        arrives as `OPTIONS http://h/`. A `#` fragment is removed. On h2 and h3, which have no
-     *        request line, the `:path` pseudo-header — and the authority for `CONNECT`, which travels
-     *        without one. Also the only honest representation of asterisk-form: `OPTIONS *` has
-     *        `target = "*"` while $uri falls back to the authority root.
+     *        request line, it is the `:path` pseudo-header, and for `CONNECT`, which has no `:path`
+     *        (RFC 9113 §8.5), it is the authority. Also the only honest representation of
+     *        asterisk-form: `OPTIONS *` has `target = "*"` while $uri falls back to the authority root.
      * @param non-empty-string|null $authority The authority the client named, byte-for-byte, whichever
      *        slot carried it: `:authority` on h2 and h3 — the `Host` header when only that was sent —
      *        and the `Host` header on HTTP/1.1. For an absolute-form target, the target authority
      *        without its userinfo replaces `Host` (RFC 9112 §3.2.2). Null when the request named none,
      *        which HTTP/1.0 alone allows: an HTTP/1.1 request without `Host` is answered `400` by the
-     *        host (RFC 9112 §3.2) and never dispatched.
+     *        host (RFC 9112 §3.2) and never dispatched. A `Host` value that is not
+     *        `uri-host [ ":" port ]` (RFC 9110 §7.2), such as `x/admin?` or `user@host`, is also
+     *        answered `400` and never dispatched, on HTTP/1.0 and HTTP/1.1. The authority of an
+     *        absolute-form target follows the same rule.
      * @param non-empty-string $protocol `HTTP/1.1`, `HTTP/2`, `HTTP/3`.
-     * @param array<non-empty-string, list<string>> $headers Names in lowercase, one entry per value,
-     *        values not normalized: h2 and h3 lowercase field names by spec, and the host lowercases
-     *        HTTP/1.1 names. Field lines whose names differ only in case share one key, with the
-     *        values in wire order.
+     * @param array<int|non-empty-string, list<string>> $headers Names in lowercase, one entry per
+     *        value, values not normalized: h2 and h3 lowercase field names by spec, and the host
+     *        lowercases HTTP/1.1 names. Field lines whose names differ only in case share one key,
+     *        with the values in wire order. PHP stores a canonical decimal name such as `123` as an
+     *        int key; a digit-only name with a leading zero, such as `01`, stays a string.
      *        Pseudo-headers are not fields (RFC 9113 §8.3) and never appear here — their facts arrive
      *        as $method, $target and $authority. `Host` is a field and stays exactly as received, which
      *        on h2 usually means absent. The one exception is an absolute-form target: then `Host`
