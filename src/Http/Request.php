@@ -41,7 +41,8 @@ final readonly class Request
      *        host (RFC 9112 §3.2) and never dispatched. A `Host` value that is not
      *        `uri-host [ ":" port ]` (RFC 9110 §7.2), such as `x/admin?` or `user@host`, is also
      *        answered `400` and never dispatched, on HTTP/1.0 and HTTP/1.1. The authority of an
-     *        absolute-form target follows the same rule.
+     *        absolute-form target follows the same rule. The host checks the characters only: it does
+     *        not parse an IP literal or the hex digits after `%`.
      * @param non-empty-string $protocol `HTTP/1.1`, `HTTP/2`, `HTTP/3`.
      * @param array<int|non-empty-string, list<string>> $headers Names in lowercase, one entry per
      *        value, values not normalized: h2 and h3 lowercase field names by spec, and the host
