@@ -23,14 +23,16 @@ final readonly class Request
      * @param non-empty-string $uri Absolute form, synthesized by the host: scheme from the listener,
      *        authority from $authority, falling back to the listener address when the client named
      *        none. The routing and URL-generation surface.
-     * @param non-empty-string $target Request-target byte-for-byte, never re-encoded — HTTP Message
-     *        Signatures and SigV4 sign this exact string. On HTTP/1.1 it is the request-target as it
-     *        appeared on the request line (RFC 9112), with three changes to the RFC 9110 §4.2.3 normal
-     *        form: an absolute-form `http` or `https` scheme arrives in lowercase, an empty
-     *        absolute-form path arrives as `/` (for `OPTIONS` too), and a `#` fragment is removed. On
-     *        h2 and h3, which have no request line, the `:path` pseudo-header — and the authority for
-     *        `CONNECT`, which travels without one. Also the only honest representation of
-     *        asterisk-form: `OPTIONS *` has `target = "*"` while $uri falls back to the authority root.
+     * @param non-empty-string $target Request-target as sent, never re-encoded — HTTP Message
+     *        Signatures and SigV4 sign this string. On HTTP/1.1 it is the request-target as it
+     *        appeared on the request line (RFC 9112), with three changes. An absolute-form `http` or
+     *        `https` scheme arrives in lowercase, and an empty absolute-form path arrives as `/`, as
+     *        in the RFC 9110 §4.2.3 normal form. The host also does this for `OPTIONS`, where the
+     *        normal form keeps the path empty, so a server-wide `OPTIONS http://h` (RFC 9112 §3.2.4)
+     *        arrives as `OPTIONS http://h/`. A `#` fragment is removed. On h2 and h3, which have no
+     *        request line, the `:path` pseudo-header — and the authority for `CONNECT`, which travels
+     *        without one. Also the only honest representation of asterisk-form: `OPTIONS *` has
+     *        `target = "*"` while $uri falls back to the authority root.
      * @param non-empty-string|null $authority The authority the client named, byte-for-byte, whichever
      *        slot carried it: `:authority` on h2 and h3 — the `Host` header when only that was sent —
      *        and the `Host` header on HTTP/1.1. For an absolute-form target, the target authority
@@ -44,9 +46,10 @@ final readonly class Request
      *        values in wire order.
      *        Pseudo-headers are not fields (RFC 9113 §8.3) and never appear here — their facts arrive
      *        as $method, $target and $authority. `Host` is a field and stays exactly as received, which
-     *        on h2 usually means absent. For an absolute-form target, `Host` carries the same value
-     *        as $authority (RFC 9112 §3.2.2), also on an HTTP/1.0 request that sent no `Host`.
-     *        Nothing else is synthesized into this array.
+     *        on h2 usually means absent. The one exception is an absolute-form target: then `Host`
+     *        carries the same value as $authority in place of the received value (RFC 9112 §3.2.2),
+     *        also on an HTTP/1.0 request that sent no `Host`. Nothing else is synthesized into this
+     *        array.
      * @param string|Multipart $body The payload, in exactly one spelling — the union is what enforces
      *        it. A body is read by its framing, never by the method name: a `QUERY` body arrives the
      *        same way a `POST` one does. A string is the bytes as received, transfer encoding undone
