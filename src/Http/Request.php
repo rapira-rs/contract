@@ -38,17 +38,12 @@ final readonly class Request
      *        and the `Host` header on HTTP/1.1. For an absolute-form target, the target authority
      *        without its userinfo replaces `Host` (RFC 9112 §3.2.2). Null when the request named none,
      *        which HTTP/1.0 alone allows: an HTTP/1.1 request without `Host` is answered `400` by the
-     *        host (RFC 9112 §3.2) and never dispatched. A `Host` value that is not
-     *        `uri-host [ ":" port ]` (RFC 9110 §7.2), such as `x/admin?` or `user@host`, is also
-     *        answered `400` and never dispatched, on HTTP/1.0 and HTTP/1.1. The authority of an
-     *        absolute-form target follows the same rule. The host checks the characters only: it does
-     *        not parse an IP literal or the hex digits after `%`.
+     *        host (RFC 9112 §3.2) and never dispatched.
      * @param non-empty-string $protocol `HTTP/1.1`, `HTTP/2`, `HTTP/3`.
-     * @param array<int|non-empty-string, list<string>> $headers Names in lowercase, one entry per
-     *        value, values not normalized: h2 and h3 lowercase field names by spec, and the host
-     *        lowercases HTTP/1.1 names. Field lines whose names differ only in case share one key,
-     *        with the values in wire order. PHP stores a canonical decimal name such as `123` as an
-     *        int key; a digit-only name with a leading zero, such as `01`, stays a string.
+     * @param array<non-empty-string, list<string>> $headers Names in lowercase, one entry per value,
+     *        values not normalized: h2 and h3 lowercase field names by spec, and the host lowercases
+     *        HTTP/1.1 names. Field lines whose names differ only in case share one key, with the
+     *        values in wire order.
      *        Pseudo-headers are not fields (RFC 9113 §8.3) and never appear here — their facts arrive
      *        as $method, $target and $authority. `Host` is a field and stays exactly as received, which
      *        on h2 usually means absent. The one exception is an absolute-form target: then `Host`

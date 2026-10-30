@@ -17,7 +17,7 @@ final readonly class FormField
     /**
      * @param non-empty-string $name `name` from `content-disposition`.
      * @param string $value The part's body, bytes as received: no charset conversion, no decoding.
-     * @param array<int|non-empty-string, list<string>> $headers The part's header section as received,
+     * @param array<non-empty-string, list<string>> $headers The part's header section as received,
      *        the shape of {@see Request::$headers}, but the names keep the case that the client sent.
      */
     public function __construct(

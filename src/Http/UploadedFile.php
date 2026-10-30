@@ -23,7 +23,7 @@ final readonly class UploadedFile
      * @param non-empty-string|null $clientMediaType The part's `content-type` value byte-for-byte,
      *        parameters included; null when the part carried none. A claim, not a measurement,
      *        exactly like $clientFilename — `finfo_file($tmpPath)` is the measurement.
-     * @param array<int|non-empty-string, list<string>> $headers The part's header section as received,
+     * @param array<non-empty-string, list<string>> $headers The part's header section as received,
      *        the shape of {@see Request::$headers}, but the names keep the case that the client sent.
      * @param non-empty-string $tmpPath Where the host spooled the bytes. Gone when the exchange
      *        finalizes — `rename()` to keep.
