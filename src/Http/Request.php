@@ -23,21 +23,26 @@ final readonly class Request
      * @param non-empty-string $uri Absolute form, synthesized by the host: scheme from the listener,
      *        authority from $authority, falling back to the listener address when the client named
      *        none. The routing and URL-generation surface.
-     * @param non-empty-string $target Request-target byte-for-byte, never parsed and never re-encoded —
-     *        HTTP Message Signatures and SigV4 sign this exact string. On HTTP/1.1 it is the
-     *        request-target as it appeared on the request line (RFC 9112); on h2 and h3, which have no
-     *        request line, the `:path` pseudo-header — and the authority for `CONNECT`, which travels
-     *        without one. Also the only honest representation of asterisk-form: `OPTIONS *` has
-     *        `target = "*"` while $uri falls back to the authority root.
+     * @param non-empty-string $target Request-target as sent, never re-encoded — HTTP Message
+     *        Signatures and SigV4 sign this string. On HTTP/1.1 it is the request-target as it
+     *        appeared on the request line (RFC 9112), with three changes. An absolute-form `http` or
+     *        `https` scheme arrives in lowercase, and an empty absolute-form path arrives as `/`, as
+     *        in the RFC 9110 §4.2.3 normal form. The host also does this for `OPTIONS`, where the
+     *        normal form keeps the path empty, so a server-wide `OPTIONS http://h` (RFC 9112 §3.2.4)
+     *        arrives as `OPTIONS http://h/`. A `#` fragment is removed. On h2 and h3, which have no
+     *        request line, it is the `:path` pseudo-header, and for `CONNECT`, which has no `:path`
+     *        (RFC 9113 §8.5), it is the authority. Also the only honest representation of
+     *        asterisk-form: `OPTIONS *` has `target = "*"` while $uri falls back to the authority root.
      * @param non-empty-string|null $authority The authority the client named, byte-for-byte, whichever
      *        slot carried it: `:authority` on h2 and h3 — the `Host` header when only that was sent —
      *        and the `Host` header on HTTP/1.1. Null when the request named none, which HTTP/1.0 alone
      *        allows: an HTTP/1.1 request without `Host` is answered `400` by the host (RFC 9112 §3.2)
      *        and never dispatched.
      * @param non-empty-string $protocol `HTTP/1.1`, `HTTP/2`, `HTTP/3`.
-     * @param array<non-empty-string, list<string>> $headers Names lowercased, one entry per value, values
-     *        as received: h2 and h3 lowercase field names by spec, and the host lowercases h1 names too,
-     *        so a lookup uses the lowercase name.
+     * @param array<non-empty-string, list<string>> $headers Names in lowercase, one entry per value,
+     *        values not normalized: h2 and h3 lowercase field names by spec, and the host lowercases
+     *        HTTP/1.1 names. Field lines whose names differ only in case share one key, with the
+     *        values in wire order.
      *        Pseudo-headers are not fields (RFC 9113 §8.3) and never appear here — their facts arrive
      *        as $method, $target and $authority. `Host` is a field and stays exactly as received, which
      *        on h2 usually means absent; nothing is synthesized into this array.

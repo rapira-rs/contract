@@ -110,8 +110,10 @@ interface Exchange extends Work
      * several calls with `$eos: false`.
      *
      * $path is opened by the host and not by PHP, so `open_basedir` does not constrain it and the host's
-     * own configured root does. A slice is never content-coded on the way out, since `content-range` counts
-     * offsets in the representation the handler sliced.
+     * own configured root does. The host checks the root and opens the file in two steps, so a local user
+     * who can write below the root can put a symlink into the path between the steps: keep the root
+     * writable by trusted users only. A slice is never content-coded on the way out, since `content-range`
+     * counts offsets in the representation the handler sliced.
      *
      * @param non-empty-string $path
      * @param int<0, max> $offset Byte to start from.
