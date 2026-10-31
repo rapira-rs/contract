@@ -35,9 +35,9 @@ final readonly class Request
      *        allows: an HTTP/1.1 request without `Host` is answered `400` by the host (RFC 9112 §3.2)
      *        and never dispatched.
      * @param non-empty-string $protocol `HTTP/1.1`, `HTTP/2`, `HTTP/3`.
-     * @param array<non-empty-string, list<string>> $headers Names as received, one entry per value, not
-     *        normalized: casing is protocol-dependent — h2 and h3 lowercase field names by spec, h1
-     *        preserves whatever the client sent — so case-insensitive lookup is the consumer's job.
+     * @param array<non-empty-string, list<string>> $headers Names lowercased, one entry per value, values
+     *        as received: h2 and h3 lowercase field names by spec, and the host lowercases h1 names too,
+     *        so a lookup uses the lowercase name.
      *        Pseudo-headers are not fields (RFC 9113 §8.3) and never appear here — their facts arrive
      *        as $method, $target and $authority. `Host` is a field and stays exactly as received, which
      *        on h2 usually means absent; nothing is synthesized into this array.
