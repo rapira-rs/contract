@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Rapira\Http;
 
 /**
- * A `multipart/form-data` body the host parsed as the upload streamed in. Arrives on
+ * A `multipart/form-data` body the host parsed once the whole body arrived, before dispatch. Arrives on
  * {@see Request::$body} in place of the raw bytes, so the payload has one spelling and the engine
  * enforces it: a request is never both raw and parsed.
  */

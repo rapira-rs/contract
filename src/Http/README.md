@@ -59,7 +59,7 @@ final readonly class Request
         public string $target,                   // request-target byte-for-byte — what SigV4 signed; :path on h2/h3
         public ?string $authority,               // :authority or Host, byte-for-byte; null when none was named
         public string $protocol,                 // HTTP/1.1, HTTP/2, HTTP/3
-        public array $headers,                   // as received, no pseudo-headers, not normalized
+        public array $headers,                   // names lowercased, values as received, no pseudo-headers
         public string|Multipart $body,           // bytes as received — or the parsed form; never both, by type
         public InetAddress|UnixAddress $remote,  // the peer's end; a unix peer is usually unnamed
         public InetAddress|UnixAddress $server,  // which socket took the call, not the Host header
@@ -68,7 +68,7 @@ final readonly class Request
     ) {}
 }
 
-/** What $body is when the host parsed a multipart/form-data upload as it streamed in. */
+/** What $body is when the host parsed a multipart/form-data upload before dispatch. */
 final readonly class Multipart
 {
     public function __construct(
@@ -95,7 +95,7 @@ exchange" all name this shape the same way.
   hands it over as one string, so no PHP worker is held open by a slow uploader and `Expect: 100-continue`,
   `413` and malformed framing never reach PHP. The cost is answering `401` before the upload arrives —
   bandwidth, not worker time.
-- `multipart/form-data` is parsed by the host as the upload streams in: a part with a `filename` spools
+- `multipart/form-data` is parsed by the host before dispatch, once the whole body arrived: a part with a `filename` spools
   to disk and arrives as `UploadedFile`, a part without stays in memory as `FormField`, and `$body` is
   the `Multipart` holding both. The union `string|Multipart` is the point: "raw or parsed, never both"
   is enforced by the engine, not documented. Both classes keep their part's header section, because a
