@@ -35,10 +35,9 @@ final readonly class Request
      *        asterisk-form: `OPTIONS *` has `target = "*"` while $uri falls back to the authority root.
      * @param non-empty-string|null $authority The authority the client named, byte-for-byte, whichever
      *        slot carried it: `:authority` on h2 and h3 — the `Host` header when only that was sent —
-     *        and the `Host` header on HTTP/1.1. For an absolute-form target, the target authority
-     *        without its userinfo replaces `Host` (RFC 9112 §3.2.2). Null when the request named none,
-     *        which HTTP/1.0 alone allows: an HTTP/1.1 request without `Host` is answered `400` by the
-     *        host (RFC 9112 §3.2) and never dispatched.
+     *        and the `Host` header on HTTP/1.1. Null when the request named none, which HTTP/1.0 alone
+     *        allows: an HTTP/1.1 request without `Host` is answered `400` by the host (RFC 9112 §3.2)
+     *        and never dispatched.
      * @param non-empty-string $protocol `HTTP/1.1`, `HTTP/2`, `HTTP/3`.
      * @param array<non-empty-string, list<string>> $headers Names in lowercase, one entry per value,
      *        values not normalized: h2 and h3 lowercase field names by spec, and the host lowercases
@@ -46,10 +45,7 @@ final readonly class Request
      *        values in wire order.
      *        Pseudo-headers are not fields (RFC 9113 §8.3) and never appear here — their facts arrive
      *        as $method, $target and $authority. `Host` is a field and stays exactly as received, which
-     *        on h2 usually means absent. The one exception is an absolute-form target: then `Host`
-     *        carries the same value as $authority in place of the received value (RFC 9112 §3.2.2),
-     *        also on an HTTP/1.0 request that sent no `Host`. Nothing else is synthesized into this
-     *        array.
+     *        on h2 usually means absent; nothing is synthesized into this array.
      * @param string|Multipart $body The payload, in exactly one spelling — the union is what enforces
      *        it. A body is read by its framing, never by the method name: a `QUERY` body arrives the
      *        same way a `POST` one does. A string is the bytes as received, transfer encoding undone

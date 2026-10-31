@@ -57,7 +57,7 @@ final readonly class Request
         public string $method,                   // byte-for-byte, case-sensitive (RFC 9110 §9.1)
         public string $uri,                      // absolute, synthesized: listener scheme + $authority
         public string $target,                   // request-target as sent, absolute-form normalized, no fragment; :path on h2/h3
-        public ?string $authority,               // :authority, Host or the absolute-form authority; null when none was named
+        public ?string $authority,               // :authority or Host, byte-for-byte; null when none was named
         public string $protocol,                 // HTTP/1.1, HTTP/2, HTTP/3
         public array $headers,                   // lowercase names, no pseudo-headers, values not normalized
         public string|Multipart $body,           // bytes as received — or the parsed form; never both, by type
