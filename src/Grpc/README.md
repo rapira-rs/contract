@@ -204,7 +204,8 @@ $call instanceof StreamingResponder
   termination — and the trailers accumulate while `respond()` is still draining, unreachable as any
   finalizer parameter. Snapshots happen on success and failure alike. The accumulator rejects the
   reserved transport names (the `grpc-`, `connect-`, `content-` and `trailer-` prefixes and the
-  connection-specific names that `ResponseMetadata::addHeader()` lists), and the `-bin`
+  connection-specific names that `ResponseMetadata::addHeader()` lists) and a name with a character
+  outside `0-9 a-z _ - .` after lower-casing (the gRPC header-name grammar), and the `-bin`
   discipline is spelled by method: `addBinaryHeader()` requires the suffix, `addHeader()` rejects it,
   so the name's promise and the value's kind can never disagree.
 - A status is data, the exception a thin thrower over it — the split grpc-go and grpc-java draw.
