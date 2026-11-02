@@ -45,8 +45,9 @@ interface ResponseMetadata
      * @throws HeadersAlreadyCommittedError The headers already left: a streaming response yielded.
      * @throws AlreadyFinalizedError The call was already finalized.
      * @throws \ValueError The name is reserved, carries the `-bin` suffix — that suffix promises
-     *         binary, {@see self::addBinaryHeader()} keeps the promise — or the value is not printable
-     *         ASCII.
+     *         binary, {@see self::addBinaryHeader()} keeps the promise — has a character other than
+     *         `0-9 a-z _ - .` after lower-casing (the gRPC header-name grammar), or the value is not
+     *         printable ASCII.
      */
     public function addHeader(string $name, string $value): void;
 
@@ -58,7 +59,8 @@ interface ResponseMetadata
      * @param non-empty-string $name
      * @throws HeadersAlreadyCommittedError
      * @throws AlreadyFinalizedError
-     * @throws \ValueError The name is reserved or lacks the `-bin` suffix.
+     * @throws \ValueError The name is reserved, lacks the `-bin` suffix or has a character other than
+     *         `0-9 a-z _ - .` after lower-casing.
      */
     public function addBinaryHeader(string $name, string $bytes): void;
 
