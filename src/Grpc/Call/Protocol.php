@@ -19,4 +19,12 @@ enum Protocol: string
 
     /** Connect: plain HTTP with proto or JSON per `Content-Type`, the status as an HTTP code plus error JSON. */
     case Connect = 'connect';
+
+    /**
+     * Plain HTTP+JSON mapped onto a method by its `google.api.http` annotation. Reserved for a host
+     * built with REST transcoding: the default Rapira build has none and never reports this case.
+     * The host resolves the path and decodes the JSON, so the worker sees a `package.Service/Method`
+     * call like any other.
+     */
+    case Rest = 'rest';
 }
