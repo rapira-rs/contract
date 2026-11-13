@@ -34,7 +34,7 @@ use Rapira\Exception\TimeoutException;
 interface Dispatcher
 {
     /**
-     * Plugin identity, matching its root TOML section: "grpc", "jobs", "http".
+     * Plugin identity, matching its root TOML section: "grpc", "http", "queue".
      *
      * @return non-empty-string
      */
