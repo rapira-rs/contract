@@ -31,7 +31,7 @@ use Rapira\Dispatcher;
  *             $router->route($message, $context)->handle($message, $context);
  *             $settle = $delivery->complete(...);
  *         } catch (Reject $e) {
- *             $settle = fn() => $delivery->fail($e->getMessage());
+ *             $settle = fn() => $delivery->fail(new \Rapira\Queue\Failure($e->getMessage()));
  *         } catch (RetryLater $e) {
  *             $settle = fn() => $delivery->retry($e->delay);
  *         } catch (\Throwable) {
