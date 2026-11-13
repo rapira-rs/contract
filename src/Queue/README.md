@@ -133,7 +133,7 @@ namespace Rapira\Queue;
 
 interface Delivery\Origin {}
 
-final readonly class Amqp\AmqpOrigin { /* exchange, correlationId, replyTo, type, contentType, …, the typed headers table */ }
+final readonly class Amqp\AmqpOrigin { /* exchange and the basic properties: correlationId, replyTo, type, contentType, … */ }
 final readonly class Kafka\KafkaOrigin { /* partition, offset */ }
 final readonly class Nats\NatsOrigin { /* replyTo */ }
 final readonly class Nats\JetStreamOrigin { /* stream, consumer, streamSequence, consumerSequence, pending */ }
@@ -203,7 +203,8 @@ persistent one into a failure anyway.
 - Two facts about repetition, never one. `$attempt` is the count the pipeline's maximum is checked
   against: exact where the host republishes retries with its own counter, the broker's delivery count
   where the driver retries in place, and so never less than the retries asked for — save on an
-  ordered pipeline over AMQP, Kafka consumer groups or Redis, where the host holds a retry in place,
+  ordered pipeline over AMQP classic queues, Kafka consumer groups or Redis, where the host holds a
+  retry in place,
   counts it in memory, and a host restart starts the count over. `$redelivered` is
   the at-least-once warning — an earlier attempt may have reached a worker and never been settled, so
   its side effects may exist. A retry is a decision, a redelivery is a crash; an idempotency check
@@ -262,8 +263,7 @@ persistent one into a failure anyway.
   folds case.
   Typed values — AMQP tables, SQS `Number` — become bytes by one fixed rule, so a header reads the same
   whichever driver delivered it. AMQP's arrays and nested tables have no bytes to become, so they are
-  absent from `Headers` and present, typed, in `Amqp\AmqpOrigin::$table`, where `x-death` lives. `Headers`
-  lives under `Delivery\` beside `Message`, the only shape that hands it out.
+  absent. `Headers` lives under `Delivery\` beside `Message`, the only shape that hands it out.
 - Broker coordinates are a closed union of final classes, one per driver, rather than an attribute
   map: an SDK `match`es the origin it knows, and each field means one thing on one broker. The cost is
   that a driver is a contract addition — a class under the broker's namespace, a union arm, a `Driver`
@@ -297,8 +297,9 @@ drains — is retried per policy, as `retry()` without a delay would do, and the
 escaping throwable is a bug: the script fatals, the worker is recycled per pool policy, and the
 delivery is retried. A message that keeps crashing its worker exhausts its attempts and fails — the
 handler's crash is not the queue's data loss, and a poison message is not an infinite loop. The
-exception is a crash that takes the host down with it: on AMQP, Kafka consumer groups and Redis the
-attempt count is the host's, and the message comes back at the attempt it crashed on.
+exception is a crash that takes the host down with it: on AMQP classic queues, Kafka consumer groups
+and Redis the attempt count is the host's, and the message comes back at the attempt it crashed on. A
+quorum queue counts deliveries itself, as `x-delivery-count`, so it is not among them.
 
 ## Not in the contract
 
@@ -314,6 +315,7 @@ attempt count is the host's, and the message comes back at the attempt it crashe
 | a `$code` on `Failure` | no queue protocol standardizes one, so a code is one key of `$details` — one spelling for the fact |
 | separate `Driver` cases for Kafka consumer and share groups | what differs for a handler — ordering, how attempts are counted — is on `Ordering`'s boot check and `$attempt`; the rest is the host's |
 | a `$contentType` on `Message` | only AMQP carries one natively — `Amqp\AmqpOrigin::$contentType`; elsewhere it is a header by convention, and decoding is the producer's agreement with the handler |
+| the AMQP headers table typed and whole, `x-death` included | consumers read it for a retry count and dead-letter history — `$attempt` and the host's own dead-lettering; what is left, a producer's nested tables, is rare enough to add when asked |
 | an attribute map in place of the per-broker origin classes | a map says neither which keys exist nor what they mean per broker; a type says both |
 | `Sqs\SqsOrigin::$receiveCount`, a delivery count on `Nats\JetStreamOrigin` | each is `$attempt` on its driver; one fact, one field |
 | delivery tags, receipt handles, ack subjects | valid only to the connection or channel that holds them, which is the host's |

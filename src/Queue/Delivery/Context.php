@@ -22,9 +22,10 @@ final readonly class Context
      *        this message. Where the host retries by republishing, its own count travels with the copy;
      *        where it retries in place — JetStream, SQS, Kafka share groups — it is the broker's
      *        delivery count, which also counts redeliveries after a lost lease. One gap: on an ordered
-     *        pipeline over AMQP, Kafka consumer groups or Redis, the host holds a retry in place and
-     *        counts it in memory, and a host restart starts over at 1. The pipeline's maximum attempts
-     *        is checked against this same number.
+     *        pipeline over AMQP classic queues, Kafka consumer groups or Redis, the host holds a retry
+     *        in place and counts it in memory, and a host restart starts over at 1; a quorum queue
+     *        keeps the count itself, as `x-delivery-count`. The pipeline's maximum attempts is checked
+     *        against this same number.
      * @param bool $redelivered An earlier attempt may have reached a worker and never been settled — the
      *        worker crashed or lost its lease — so its effects may already exist. Neither answer is
      *        proof. True may be a false alarm once a host restart has lost the host's record of the

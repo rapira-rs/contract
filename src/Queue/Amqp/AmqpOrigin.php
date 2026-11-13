@@ -22,12 +22,6 @@ final readonly class AmqpOrigin implements Origin
      * @param int<0, 255>|null $priority
      * @param string|null $expiration The per-message TTL as the producer set it: milliseconds, as a
      *        string, which is how AMQP carries it.
-     * @param array<string, mixed> $table The headers table whole and typed as AMQP carried it: integers
-     *        as `int`, floats as `float`, booleans as `bool`, timestamps as `int` unix seconds, decimals
-     *        and byte strings as `string`, void as `null`, arrays as lists and nested tables as arrays —
-     *        so an empty array and an empty table both read `[]`.
-     *        {@see Message::$headers} holds only the scalar entries, as bytes; what it cannot — `x-death`,
-     *        a nested table — is read here.
      */
     public function __construct(
         public string $exchange,
@@ -40,6 +34,5 @@ final readonly class AmqpOrigin implements Origin
         public ?string $userId,
         public ?int $priority,
         public ?string $expiration,
-        public array $table,
     ) {}
 }

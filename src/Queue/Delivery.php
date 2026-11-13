@@ -24,8 +24,8 @@ use Rapira\Work;
  *
  * Left unfinalized — dropped, past {@see Context::$deadline}, or held when the worker drains — the
  * delivery is retried per its pipeline's policy, as {@see self::retry()} with no delay would do, and the
- * attempt counts, so a message that keeps crashing its worker exhausts its attempts and fails. On AMQP,
- * Kafka consumer groups and Redis that count is the host's, and a crash that takes the host down with
+ * attempt counts, so a message that keeps crashing its worker exhausts its attempts and fails. On AMQP
+ * classic queues, Kafka consumer groups and Redis that count is the host's, and a crash that takes the host down with
  * it hands the message back at the same attempt.
  */
 interface Delivery extends Work

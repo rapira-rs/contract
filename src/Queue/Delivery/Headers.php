@@ -10,8 +10,7 @@ namespace Rapira\Queue\Delivery;
  * Brokers with typed values arrive as bytes by one rule: integers and decimals in decimal, floats in
  * the shortest form that reads back the same, booleans as `true` and `false`, AMQP timestamps as unix
  * seconds, a void or Kafka null value as the empty string, SQS `Binary` attributes as raw bytes. AMQP
- * arrays and nested tables have no bytes to become and are left out —
- * {@see \Rapira\Queue\Amqp\AmqpOrigin::$table} has them.
+ * arrays and nested tables have no bytes to become and are left out.
  */
 final readonly class Headers implements \Countable, \IteratorAggregate
 {
