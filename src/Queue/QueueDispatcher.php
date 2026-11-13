@@ -62,9 +62,8 @@ interface QueueDispatcher extends Dispatcher
      * Wait up to $timeout for the next delivery, with {@see Dispatcher::receive()}'s waiting semantics:
      * the fiber suspends, not the thread; outside a fiber the process blocks.
      *
-     * On a pipeline ordered {@see Ordering::PerKey} or {@see Ordering::Total}, a message is never handed
-     * out while its predecessor — under the same key, or at all — is held unfinalized by any worker of
-     * this host.
+     * On an ordered pipeline a message is never handed out while its predecessor — under the same key,
+     * in the same partition, or at all — is held unfinalized by any worker of this host.
      *
      * @param int<-1, max> $timeout Microseconds to wait; -1 waits indefinitely, 0 does not wait at all.
      * @throws \Rapira\Exception\TimeoutException No delivery became available within $timeout.

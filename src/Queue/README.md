@@ -57,7 +57,7 @@ final readonly class PipelineInfo
         public string $name,
         public Driver $driver,        // rabbitmq | rabbitmq-stream | kafka | nats | jetstream | redis-stream | redis-list | sqs | memory
         public array $sources,        // list<string> — queues, topics, subject patterns, keys, as configured
-        public Ordering $ordering,    // unordered | per-key | total
+        public Ordering $ordering,    // unordered | per-key | per-partition | total
         public Guarantee $guarantee,  // at-most-once | at-least-once
     ) {}
 }
@@ -237,21 +237,28 @@ persistent one into a failure anyway.
   after it is `WorkDiscardedException`, the `Work` discipline unchanged, and the broker redelivers the
   message elsewhere on its own.
 - Order is enforced at `receive()`, not described. On an ordered pipeline the host withholds a message
-  while its predecessor — under the same key for `PerKey`, at all for `Total` — is held unfinalized by
-  any worker of the host, so deliveries in flight at once — on several workers, or on several fibers
-  of one — cannot reorder a key. A
-  retry on such a pipeline keeps its place and the messages behind it wait: a pipeline that would
-  rather let them pass is one configured `Unordered`. The place survives a host restart because on an
-  ordered pipeline the host never republishes a retry — it holds the original unacknowledged through
-  the delay, and a restart hands it back first. The price is the delay: it is cut to how long the
-  broker lets a message be held — the same caps `$deadline` carries — since past it the
-  broker takes the message back on its own terms. A null key orders with nothing — a Kafka record
-  without a key was never promised an order by its producer. The promise is one host's; a second host
-  on the same pipeline keeps it only where the broker gives each key to one consumer, as Kafka does a
-  partition to one consumer group member, SQS a FIFO group to one receiver, RabbitMQ a queue or a
-  stream to its single active consumer. The host refuses at boot what it can see is unorderable: an ordered pipeline
-  on a Kafka share group or an SQS standard queue, `PerKey` on a driver whose messages carry no key.
-  The offset bookkeeping of Kafka and RabbitMQ streams needs no such care — the host stores offsets
+  while its predecessor — under the same key for `PerKey`, in the same partition for `PerPartition`,
+  at all for `Total` — is held unfinalized by any worker of the host, so deliveries in flight at once
+  — on several workers, or on several fibers of one — cannot reorder them. A retry on such a pipeline
+  keeps its place and the messages behind it wait: a pipeline that would rather let them pass is one
+  configured `Unordered`. The place survives a host restart because on an ordered pipeline the host
+  never republishes a retry — it holds the original unacknowledged through the delay, and a restart
+  hands it back first. The price is the delay: it is cut to how long the broker lets a message be
+  held — the same caps `$deadline` carries — since past it the broker takes the message back on its
+  own terms. The promise is one host's; a second host on the same pipeline keeps it only where the
+  broker gives each key or partition to one consumer, as Kafka does a partition to one consumer group
+  member, SQS a FIFO group to one receiver, RabbitMQ a queue, a stream or a super stream partition to
+  its single active consumer. The host refuses at boot what it can see is unorderable: an ordered
+  pipeline on a Kafka share group or an SQS standard queue, `PerKey` on a driver whose messages carry
+  no key, `PerPartition` on a driver with no partitions.
+- `PerKey` and `PerPartition` are two orders because a null key means two things. A Kafka record
+  without a key was never promised an order by its producer, so under `PerKey` it follows nothing. A
+  RabbitMQ super stream message has no key on it at all, yet its producer chose the partition by a
+  routing key it computed and did not store: the order is real and only the partition shows it. A
+  per-key order would hand one partition's messages out in parallel and undo what the broker kept;
+  `PerPartition` promises exactly the broker's order, at its parallelism, with no key to agree on.
+  It also serves a keyless Kafka topic whose partitions carry an order, a change log among them.
+- The offset bookkeeping of Kafka and RabbitMQ streams needs no such care — the host stores offsets
   up to the lowest one still unfinalized, so settling out of order is always safe.
 - A RabbitMQ stream is a log, not a queue: an ack moves no message out, nothing is redelivered, there
   is no dead-letter, and every consumer reads everything. It is its own driver, read over the stream

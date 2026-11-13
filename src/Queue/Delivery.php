@@ -54,7 +54,7 @@ interface Delivery extends Work
      * Back for another attempt, with {@see Context::$attempt} one higher. Past the pipeline's maximum
      * attempts the message fails instead, as {@see self::fail()} would.
      *
-     * On a pipeline ordered {@see Ordering::PerKey} or {@see Ordering::Total}, the retry keeps its place:
+     * On a pipeline ordered other than {@see Ordering::Unordered}, the retry keeps its place:
      * the messages behind it wait until it is settled. There the host never republishes the retry: it
      * holds the original unacknowledged through the delay, so a host restart hands it back in its
      * place, and the delay is cut to what the broker lets the host hold a message — RabbitMQ's consumer
