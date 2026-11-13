@@ -10,8 +10,17 @@ namespace Rapira\Queue;
  */
 enum Driver: string
 {
-    /** AMQP 0-9-1 — RabbitMQ. Origin: {@see Amqp\AmqpOrigin}. */
-    case Amqp = 'amqp';
+    /**
+     * RabbitMQ queues — classic and quorum — over AMQP 0-9-1. A stream queue is refused at boot: it is
+     * {@see self::RabbitMqStream}'s. Origin: {@see RabbitMq\RabbitMqOrigin}.
+     */
+    case RabbitMq = 'rabbitmq';
+
+    /**
+     * RabbitMQ streams and super streams over the stream protocol, read through a single active
+     * consumer. Origin: {@see RabbitMq\RabbitMqStreamOrigin}.
+     */
+    case RabbitMqStream = 'rabbitmq-stream';
 
     /** A consumer group or a share group. Origin: {@see Kafka\KafkaOrigin}. */
     case Kafka = 'kafka';

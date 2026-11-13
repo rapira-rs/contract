@@ -3,8 +3,8 @@
 The shared core — `Dispatcher`, `Work`, the rules every plugin obeys — lives in the
 [package README](../../README.md); this file holds only what is the queue's own.
 
-Host-side one plugin speaks to every broker it has a driver for — RabbitMQ over AMQP, Kafka, NATS core
-and JetStream, Redis streams and lists, SQS, and an in-process queue — and owns everything the brokers
+Host-side one plugin speaks to every broker it has a driver for — RabbitMQ queues and streams, Kafka, NATS
+core and JetStream, Redis streams and lists, SQS, and an in-process queue — and owns everything the brokers
 do differently: acknowledgement, lease renewal, offset commits, delayed redelivery, dead-lettering.
 None of that reaches PHP. The worker sees a **pipeline** — one named subscription on one broker, with
 its own policy for attempts, backoff, ordering and where a failed message goes — and deliveries
@@ -55,7 +55,7 @@ final readonly class PipelineInfo
 {
     public function __construct(
         public string $name,
-        public Driver $driver,        // amqp | kafka | nats | jetstream | redis-stream | redis-list | sqs | memory
+        public Driver $driver,        // rabbitmq | rabbitmq-stream | kafka | nats | jetstream | redis-stream | redis-list | sqs | memory
         public array $sources,        // list<string> — queues, topics, subject patterns, keys, as configured
         public Ordering $ordering,    // unordered | per-key | total
         public Guarantee $guarantee,  // at-most-once | at-least-once
@@ -72,15 +72,19 @@ interface QueueDispatcherInfo extends \Rapira\DispatcherInfo
 ```php
 namespace Rapira\Queue\QueueDispatcherInfo;
 
-/** Where one pipeline's messages wait: in the broker, in the host, in this worker. */
+/** Whether the host consumes the pipeline, and where its messages wait: broker, host, this worker. */
 final readonly class PipelineCounters
 {
     public function __construct(
+        public PipelineState $state,
         public ?int $backlog,   // not yet fetched by the host; null: unknown right now, never "empty"
         public int $pending,    // fetched, held by the host — withheld-for-order included
         public int $active,     // handed to this worker, unfinalized
     ) {}
 }
+
+/** Idle: subscribed, assigned nothing. Stopped: refused in a way the host does not retry. */
+enum PipelineState { case Consuming; case Idle; case Reconnecting; case Stopped; }
 ```
 
 The shapes only a delivery hands out live under its name:
@@ -133,7 +137,8 @@ namespace Rapira\Queue;
 
 interface Delivery\Origin {}
 
-final readonly class Amqp\AmqpOrigin { /* exchange and the basic properties: correlationId, replyTo, type, contentType, … */ }
+final readonly class RabbitMq\RabbitMqOrigin { /* exchange and the basic properties: correlationId, replyTo, type, contentType, … */ }
+final readonly class RabbitMq\RabbitMqStreamOrigin { /* stream, offset, and the AMQP 1.0 properties: correlationId, replyTo, subject, … */ }
 final readonly class Kafka\KafkaOrigin { /* partition, offset */ }
 final readonly class Nats\NatsOrigin { /* replyTo */ }
 final readonly class Nats\JetStreamOrigin { /* stream, consumer, streamSequence, consumerSequence, pending */ }
@@ -174,9 +179,9 @@ persistent one into a failure anyway.
 
   | Verb | Native | The host carries it out |
   |---|---|---|
-  | `complete()` | AMQP `ack`, JetStream `Ack`, Redis `XACK`/`LREM`, SQS `DeleteMessage`; Kafka commits up to the lowest offset still unfinalized | NATS core, memory: nothing to acknowledge |
-  | `retry()` | JetStream `Nak` with delay, SQS `ChangeMessageVisibility`; Kafka share groups `RELEASE`, which takes no delay | AMQP, Kafka consumer groups, Redis: republish to a delay queue or retry topic, then acknowledge — on an ordered pipeline, hold the original unacknowledged through the delay; a share group's delay: hold, then `RELEASE`; NATS core, memory: held in memory |
-  | `fail()` | AMQP `reject` without requeue, into the dead-letter exchange; dropping: JetStream `Term`, Kafka share groups `REJECT` | every driver, to a dead-letter pipeline: publish there, then settle the original — `ack`, `Term`, `REJECT`, delete or commit; NATS core, memory, with no dead-letter pipeline configured: drop |
+  | `complete()` | AMQP `ack`, JetStream `Ack`, Redis `XACK`/`LREM`, SQS `DeleteMessage`; Kafka commits and a RabbitMQ stream stores its offset up to the lowest one still unfinalized | NATS core, memory: nothing to acknowledge |
+  | `retry()` | JetStream `Nak` with delay, SQS `ChangeMessageVisibility`; Kafka share groups `RELEASE`, which takes no delay | RabbitMQ queues and streams, Kafka consumer groups, Redis: republish to a delay queue, retry topic or retry stream, then acknowledge — on an ordered pipeline, hold the original unacknowledged through the delay; a share group's delay: hold, then `RELEASE`; NATS core, memory: held in memory |
+  | `fail()` | AMQP `reject` without requeue, into the dead-letter exchange; dropping: JetStream `Term`, Kafka share groups `REJECT` | every driver — a RabbitMQ stream has no dead-letter of its own — to a dead-letter pipeline: publish there, then settle the original — `ack`, `Term`, `REJECT`, delete or commit; NATS core, memory, with no dead-letter pipeline configured: drop |
 
   So no verb is conditional on the driver, and no driver leaks its vocabulary into the handler: `ack` /
   `nack(requeue)` is AMQP's split, and on Kafka neither exists.
@@ -203,9 +208,9 @@ persistent one into a failure anyway.
 - Two facts about repetition, never one. `$attempt` is the count the pipeline's maximum is checked
   against: exact where the host republishes retries with its own counter, the broker's delivery count
   where the driver retries in place, and so never less than the retries asked for — save on an
-  ordered pipeline over AMQP classic queues, Kafka consumer groups or Redis, where the host holds a
-  retry in place,
-  counts it in memory, and a host restart starts the count over. `$redelivered` is
+  ordered pipeline over RabbitMQ classic queues or streams, Kafka consumer groups or Redis, where the
+  host holds a retry in place, counts it in memory, and a host restart starts the count over.
+  `$redelivered` is
   the at-least-once warning — an earlier attempt may have reached a worker and never been settled, so
   its side effects may exist. A retry is a decision, a redelivery is a crash; an idempotency check
   wants the second. Neither answer is proof, and each driver errs its own way: a Redis stream entry
@@ -213,8 +218,8 @@ persistent one into a failure anyway.
   consumer's by a claim; JetStream, SQS and Kafka share groups count a retry and a crash alike, and on
   an ordered pipeline a held retry comes back as a redelivery after a host restart, so in both cases
   the host subtracts the retries it recorded and answers true once a restart has lost that record;
-  Kafka consumer groups re-read uncommitted offsets after a rebalance with no trace of what was
-  processed, so there false can miss one.
+  Kafka consumer groups and RabbitMQ streams re-read from the stored offset after a rebalance or a
+  restart with no trace of what was processed, so there false can miss one.
 - Where a driver retries in place and the broker keeps an attempt limit of its own — JetStream's
   `MaxDeliver`, an SQS redrive policy's `maxReceiveCount`, a share group's delivery count limit — it
   counts the same deliveries `$attempt` does, and the lower limit ends the message; the broker's
@@ -243,11 +248,16 @@ persistent one into a failure anyway.
   broker takes the message back on its own terms. A null key orders with nothing — a Kafka record
   without a key was never promised an order by its producer. The promise is one host's; a second host
   on the same pipeline keeps it only where the broker gives each key to one consumer, as Kafka does a
-  partition to one consumer group member, SQS a FIFO group to one receiver, RabbitMQ a queue to its
-  single active consumer. The host refuses at boot what it can see is unorderable: an ordered pipeline
+  partition to one consumer group member, SQS a FIFO group to one receiver, RabbitMQ a queue or a
+  stream to its single active consumer. The host refuses at boot what it can see is unorderable: an ordered pipeline
   on a Kafka share group or an SQS standard queue, `PerKey` on a driver whose messages carry no key.
-  Kafka's offset bookkeeping needs no such care — the host commits up to the lowest offset still
-  unfinalized, so settling out of order is always safe.
+  The offset bookkeeping of Kafka and RabbitMQ streams needs no such care — the host stores offsets
+  up to the lowest one still unfinalized, so settling out of order is always safe.
+- A RabbitMQ stream is a log, not a queue: an ack moves no message out, nothing is redelivered, there
+  is no dead-letter, and every consumer reads everything. It is its own driver, read over the stream
+  protocol, where the broker stores offsets and keeps one active consumer per stream or partition —
+  over AMQP 0-9-1 it does neither. A stream queue under the `rabbitmq` driver is refused at boot: the
+  queue verbs would lie on it, `complete()` removing nothing and two hosts doing the same work.
 - `Guarantee` is on the descriptor because it decides what a handler may do, and only the
   configuration knows it: the same Redis list is at-least-once through a processing list and
   at-most-once without one. On an at-most-once pipeline the verbs still finalize, `retry()` is held in
@@ -279,6 +289,11 @@ persistent one into a failure anyway.
   places a message waits read together for one pipeline instead of from parallel maps sharing keys.
   The three never overlap: Kafka's backlog runs from the host's fetch position, not from the
   committed offset, which trails behind everything pending and active.
+- `$state` is an enum, not a bool, because subscribed and given work are two facts: a Kafka member
+  with no partitions, a paused JetStream consumer, a standby stream consumer are connected and idle,
+  and telling that from a lost broker is the first thing an operator asks. Where the host cannot tell
+  — a standby single active consumer on a RabbitMQ queue says nothing over AMQP 0-9-1 — it reports
+  `Consuming`.
 - `fail()` takes data, as `Grpc\Responder::fail()` takes a `Status`: the worker says why, the host
   carries it wherever it publishes the dead-letter itself — every driver but a policy that leaves the
   dead-lettering to AMQP's exchange, whose `x-death` holds only an enumerated reason. A class rather
@@ -297,8 +312,8 @@ drains — is retried per policy, as `retry()` without a delay would do, and the
 escaping throwable is a bug: the script fatals, the worker is recycled per pool policy, and the
 delivery is retried. A message that keeps crashing its worker exhausts its attempts and fails — the
 handler's crash is not the queue's data loss, and a poison message is not an infinite loop. The
-exception is a crash that takes the host down with it: on AMQP classic queues, Kafka consumer groups
-and Redis the attempt count is the host's, and the message comes back at the attempt it crashed on. A
+exception is a crash that takes the host down with it: on RabbitMQ classic queues and streams, Kafka
+consumer groups and Redis the attempt count is the host's, and the message comes back at the attempt it crashed on. A
 quorum queue counts deliveries itself, as `x-delivery-count`, so it is not among them.
 
 ## Not in the contract
@@ -314,7 +329,7 @@ quorum queue counts deliveries itself, as `x-delivery-count`, so it is not among
 | a `Throwable` or a stack trace in `Failure` | the trace is the worker's log; a broker header has size limits a trace runs into, and a `Throwable` does not cross into the host |
 | a `$code` on `Failure` | no queue protocol standardizes one, so a code is one key of `$details` — one spelling for the fact |
 | separate `Driver` cases for Kafka consumer and share groups | what differs for a handler — ordering, how attempts are counted — is on `Ordering`'s boot check and `$attempt`; the rest is the host's |
-| a `$contentType` on `Message` | only AMQP carries one natively — `Amqp\AmqpOrigin::$contentType`; elsewhere it is a header by convention, and decoding is the producer's agreement with the handler |
+| a `$contentType` on `Message` | only RabbitMQ carries one natively — `RabbitMqOrigin::$contentType`, `RabbitMqStreamOrigin::$contentType`; elsewhere it is a header by convention, and decoding is the producer's agreement with the handler |
 | the AMQP headers table typed and whole, `x-death` included | consumers read it for a retry count and dead-letter history — `$attempt` and the host's own dead-lettering; what is left, a producer's nested tables, is rare enough to add when asked |
 | an attribute map in place of the per-broker origin classes | a map says neither which keys exist nor what they mean per broker; a type says both |
 | `Sqs\SqsOrigin::$receiveCount`, a delivery count on `Nats\JetStreamOrigin` | each is `$attempt` on its driver; one fact, one field |

@@ -16,11 +16,13 @@ final readonly class Message
 {
     /**
      * @param non-empty-string|null $id The message's own identity, stable across redeliveries and
-     *        retries — the idempotency key when there is one. AMQP's `message-id` property, JetStream's
-     *        `Nats-Msg-Id`, SQS's `MessageId`. Null when the message carries none: always on Kafka, NATS
-     *        core and Redis, and on AMQP and JetStream whenever the producer set none.
-     * @param string $destination Where the producer sent it: the topic on Kafka, the subject on NATS
-     *        and JetStream, the key on Redis, the queue name on SQS — on a pipeline subscribed by
+     *        retries — the idempotency key when there is one. The `message-id` property on RabbitMQ
+     *        queues and streams, JetStream's `Nats-Msg-Id`, SQS's `MessageId`. Null when the message
+     *        carries none: always on Kafka, NATS core and Redis, and on RabbitMQ and JetStream whenever
+     *        the producer set none.
+     * @param string $destination Where the producer sent it: the topic on Kafka, the stream or super
+     *        stream on a RabbitMQ stream, the subject on NATS and JetStream, the key on Redis, the
+     *        queue name on SQS — on a pipeline subscribed by
      *        pattern, the concrete name that matched. On AMQP the routing key as published, which a
      *        fanout exchange ignores: the producer addresses an exchange, and the queue the pipeline
      *        consumes is whatever its bindings matched.
@@ -37,9 +39,9 @@ final readonly class Message
      *        own retry bookkeeping never appears.
      * @param float|null $publishedAt Unix timestamp with microsecond precision: when the producer sent it
      *        or the broker stored it, whichever the broker records — the record's timestamp on Kafka per
-     *        the topic's `message.timestamp.type`, the stored time on JetStream and SQS, the entry id's
-     *        time on a Redis stream, the `timestamp` property, in whole seconds, on AMQP. Null when the
-     *        broker records none.
+     *        the topic's `message.timestamp.type`, the chunk's timestamp on a RabbitMQ stream, the
+     *        stored time on JetStream and SQS, the entry id's time on a Redis stream, the `timestamp`
+     *        property, in whole seconds, on a RabbitMQ queue. Null when the broker records none.
      */
     public function __construct(
         public ?string $id,

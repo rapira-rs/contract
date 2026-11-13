@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rapira\Queue\Amqp;
+namespace Rapira\Queue\RabbitMq;
 
 use Rapira\Queue\Delivery\Context;
 use Rapira\Queue\Delivery\Message;
@@ -14,7 +14,7 @@ use Rapira\Queue\Delivery\Origin;
  * {@see Message::$id}, `timestamp` {@see Message::$publishedAt}. The delivery tag stays with the host —
  * it is valid only on the channel that delivered it.
  */
-final readonly class AmqpOrigin implements Origin
+final readonly class RabbitMqOrigin implements Origin
 {
     /**
      * @param string $exchange The exchange the producer published to, kept when the host republishes a

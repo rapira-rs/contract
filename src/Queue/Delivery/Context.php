@@ -22,8 +22,8 @@ final readonly class Context
      *        this message. Where the host retries by republishing, its own count travels with the copy;
      *        where it retries in place — JetStream, SQS, Kafka share groups — it is the broker's
      *        delivery count, which also counts redeliveries after a lost lease. One gap: on an ordered
-     *        pipeline over AMQP classic queues, Kafka consumer groups or Redis, the host holds a retry
-     *        in place and counts it in memory, and a host restart starts over at 1; a quorum queue
+     *        pipeline over RabbitMQ classic queues or streams, Kafka consumer groups or Redis, the host
+     *        holds a retry in place and counts it in memory, and a host restart starts over at 1; a quorum queue
      *        keeps the count itself, as `x-delivery-count`. The pipeline's maximum attempts is checked
      *        against this same number.
      * @param bool $redelivered An earlier attempt may have reached a worker and never been settled — the
@@ -31,8 +31,8 @@ final readonly class Context
      *        proof. True may be a false alarm once a host restart has lost the host's record of the
      *        retries it asked for: on JetStream, SQS and Kafka share groups the broker counts a retry
      *        and a crash alike, and on an ordered pipeline a held retry comes back as a redelivery.
-     *        False may miss one where the broker keeps no record — Kafka consumer groups re-read
-     *        uncommitted offsets after a rebalance.
+     *        False may miss one where the broker keeps no record — Kafka consumer groups and RabbitMQ
+     *        streams re-read from the stored offset after a rebalance or a restart.
      * @param float $receivedAt Unix timestamp with microsecond precision, taken when the host fetched it
      *        from the broker — before it queued and before this worker took it.
      * @param float|null $deadline Unix timestamp with microsecond precision after which the host no
