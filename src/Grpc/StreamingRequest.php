@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rapira\Grpc;
 
+use Rapira\Grpc\Call\MessageStream;
+
 /**
  * The request axis of {@see MethodKind::ClientStreaming} and {@see MethodKind::BidiStreaming} calls:
  * a stream, still arriving when the worker takes the call: the call is handed out when it opens, and its
