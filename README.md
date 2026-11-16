@@ -30,6 +30,12 @@ function get_version(): string {}
 /** Queued to the host under the `app` target. Never blocks, never throws. */
 function log(string $message, LogLevel $level = LogLevel::Info, array $context = []): void {}
 
+/** Live objects per class, uncollected cycles included. Nothing is referenced or flagged. Every mode. */
+function count_objects(): array {}  // array<class-string, int<1, max>>, keyed by $object::class
+
+/** Live objects matching any of $classes by instanceof, or all of them when empty; values are null. */
+function get_objects(array $classes = []): \WeakMap {}
+
 /** No backing values; a PSR-3 bridge squashes eight levels into these five. */
 enum LogLevel { case Error; case Warning; case Info; case Debug; case Trace; }
 
@@ -142,7 +148,8 @@ the reasoning behind its shape, lives beside its stubs:
   either mockable or constructible, and a test never needs the host: a fake `StreamingRequest` returns an
   array-backed `MessageStream`, a fixture `Context` carries a `new Metadata([...])`.
 - The global functions cannot be redeclared per test, so without the extension each stub delegates to an
-  `Internal\Runtime`, whose own answers are the fallbacks: `Classic`, no dispatcher, no worker requests. A
+  `Internal\Runtime`, whose own answers are the fallbacks: `Classic`, no dispatcher, no worker requests, an
+  `\Error` from the object functions — an empty answer there would read as "no leaks". A
   test double extends it and is put in place with `Internal\Double::setRuntime()`; scripted doubles and
   test tooling live in `rapira/testing`.
 - The consumer is Rapira's SDK, not application code. Test for any addition: could the SDK compute it
@@ -150,6 +157,17 @@ the reasoning behind its shape, lives beside its stubs:
   `next()` into an iterable value, but only `MessageStream` itself can pass an `iterable` parameter.
 - Interfaces state behaviour, not the reasoning behind it. Why something is shaped the way it is, or absent,
   is recorded here.
+
+## Object inspection
+
+`count_objects()` and `get_objects()` exist for one job: finding what a long-running worker leaks. Userland
+cannot walk the engine's object store, so the SDK cannot compute either. The hunt is a diff: count at
+one request, count again a thousand later, see which class grows — then fetch that class's instances.
+The count is the cheap step and touches no object; the fetch registers a weak reference per object it
+returns, which is why it takes a class list instead of handing out the whole heap by default.
+
+Neither function collects cycles first. Collection runs destructors, a side effect a read must not
+have; calling `gc_collect_cycles()` before the snapshot is the SDK's choice to make.
 
 ## Exceptions
 
@@ -184,6 +202,8 @@ getting there at all.
 | `LifecycleException` | several units in flight is the normal case, not a violation |
 | `receiveMany()` | latency poison for request traffic; batching is plugin vocabulary |
 | backing values on `LogLevel` | the host matches cases, so no string is on the wire — and without `tryFrom()` a PSR-3 bridge cannot half-map: `tryFrom($level) ?? Info` would file every `emergency` under `Info` |
+| an exclusion list or name patterns on `get_objects()` | "everything but the noise" is still most of the heap, the costly fetch the class list exists to avoid; what lives in the process at all is `count_objects()`'s answer, filterable in userland. Patterns would add a matching language to the contract |
+| refcounts as `get_objects()` values | stale once the snapshot returns, and iterating the map itself moves them |
 | CN, SAN and issuer on `Tls`, or a field per certificate attribute | fingerprint pinning covers mTLS identity, and Pingora's `SslDigest` exposes nothing more ([pingora#421](https://github.com/cloudflare/pingora/issues/421)). When names are needed, the addition is one `certPem` field with the whole certificate — `openssl_x509_parse()` reads every attribute in userland |
 
 ## Open
@@ -191,6 +211,11 @@ getting there at all.
 1. **Non-dispatcher plugins.** A logger richer than `log()` — its own target, its own sink — or a KV
    client is not a stream of work units and needs a second acquisition path, without bringing back
    config objects.
+2. **Retention paths.** `get_objects()` says what leaked, not what holds it. Answering that is a walk of
+   the reference graph from the roots — a separate function with its own cost model.
+3. **A class predicate on `get_objects()`.** `?callable(class-string): bool`, called once per distinct class,
+   would cover any filter without a matching language, at the price of userland code running mid-scan.
+   It fits as a second parameter beside `$classes` if a class list proves too narrow.
 
 ## References
 
@@ -198,3 +223,5 @@ getting there at all.
   config-object direction was superseded within its own thread.
 - [rapira-rs/rapira#45](https://github.com/rapira-rs/rapira/issues/45) — dispatcher interfaces; origin of
   the pull model and the finalization discipline.
+- [rapira-rs/rapira#72](https://github.com/rapira-rs/rapira/issues/72) — inspecting live objects to find
+  memory leaks.

@@ -81,6 +81,37 @@ if (!\function_exists('Rapira\get_version')) {
     {
         Double::runtime()->log($message, $level, $context);
     }
+
+    /**
+     * Live objects of this process per class, counted without referencing or flagging any of them.
+     *
+     * A garbage cycle the collector has not reached yet is still live here; `gc_collect_cycles()`
+     * before the count leaves only what is reachable, at the cost of running the cycle's destructors.
+     * Answers in every mode.
+     *
+     * @return array<class-string, int<1, max>> Keyed by `$object::class`.
+     */
+    function count_objects(): array
+    {
+        return Double::runtime()->countObjects();
+    }
+
+    /**
+     * Live objects of this process, held weakly: the snapshot keeps none of them alive.
+     *
+     * Same population as {@see count_objects()}, uncollected cycles included; the returned map is not
+     * in it. A lazy object is returned uninitialized. Objects created after the call never appear.
+     * Answers in every mode.
+     *
+     * @param list<class-string> $classes Class or interface names, matched with `instanceof`; empty matches
+     *        every object. Names are not autoloaded — an unloaded class has no instances to match.
+     *
+     * @return \WeakMap<object, null>
+     */
+    function get_objects(array $classes = []): \WeakMap
+    {
+        return Double::runtime()->objects($classes);
+    }
 }
 
 }
