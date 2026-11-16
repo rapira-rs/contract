@@ -38,8 +38,8 @@ final readonly class Message
      *        here stay where the producer put them — `Nats-Msg-Id` is both $id and a header; the host's
      *        own retry bookkeeping never appears.
      * @param float|null $publishedAt Unix timestamp with microsecond precision: when the producer sent it
-     *        or the broker stored it, whichever the broker records — the record's timestamp on Kafka per
-     *        the topic's `message.timestamp.type`, the chunk's timestamp on a RabbitMQ stream, the
+     *        or the broker stored it, whichever the broker records — the record's timestamp on Kafka, of
+     *        the kind {@see \Rapira\Queue\Kafka\KafkaOrigin::$timestampType} names, the chunk's timestamp on a RabbitMQ stream, the
      *        stored time on JetStream and SQS, the entry id's time on a Redis stream, the `timestamp`
      *        property, in whole seconds, on a RabbitMQ queue. Null when the broker records none.
      */

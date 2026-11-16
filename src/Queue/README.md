@@ -139,7 +139,7 @@ interface Delivery\Origin {}
 
 final readonly class RabbitMq\RabbitMqOrigin { /* exchange and the basic properties: correlationId, replyTo, type, contentType, … */ }
 final readonly class RabbitMq\RabbitMqStreamOrigin { /* stream, offset, and the AMQP 1.0 properties: correlationId, replyTo, subject, … */ }
-final readonly class Kafka\KafkaOrigin { /* partition, offset */ }
+final readonly class Kafka\KafkaOrigin { /* partition, offset, timestampType: create time or log-append time */ }
 final readonly class Nats\NatsOrigin { /* replyTo */ }
 final readonly class Nats\JetStreamOrigin { /* stream, consumer, streamSequence, consumerSequence, pending */ }
 final readonly class Redis\RedisStreamOrigin { /* entry id */ }
@@ -346,6 +346,7 @@ quorum queue counts deliveries itself, as `x-delivery-count`, so it is not among
 | request–reply — answering `Nats\NatsOrigin::$replyTo` or AMQP's `replyTo` | a caller waiting on a reply, with a timeout and no retry, is RPC and not a queue; `$replyTo` stays data |
 | `Delivery\Context::timeRemaining()` | `$deadline - microtime(true)` |
 | `Headers::has()` | `values($k) !== []` |
+| a null header value apart from an empty one | Kafka and AMQP's void can tell them apart, but headers are bytes and null is not bytes; a nullable value would make every reader check for a case almost no producer relies on |
 | reusing `Grpc\Metadata` for headers | its keys are case-insensitive and its `-bin` suffix is gRPC law; broker headers are neither |
 | the connection a pipeline runs on, on `PipelineInfo` | host topology, not a fact any handler branches on |
 

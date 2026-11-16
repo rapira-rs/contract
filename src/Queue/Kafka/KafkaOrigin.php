@@ -22,9 +22,13 @@ final readonly class KafkaOrigin implements Origin
     /**
      * @param int<0, max> $partition
      * @param int<0, max> $offset
+     * @param KafkaTimestampType|null $timestampType What {@see Message::$publishedAt} is, carried
+     *        forward with it across retries the host republishes; null when the record has no
+     *        timestamp, as {@see Message::$publishedAt} is.
      */
     public function __construct(
         public int $partition,
         public int $offset,
+        public ?KafkaTimestampType $timestampType,
     ) {}
 }
