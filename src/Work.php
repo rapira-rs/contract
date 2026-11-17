@@ -8,16 +8,16 @@ namespace Rapira;
  * A unit of work from {@see Dispatcher}: the data to act on plus the verbs that finish it.
  *
  * Instances come from the host, never from `new`. The finalizing verbs live on the concrete type —
- * HTTP writes a body, gRPC responds or fails, jobs completes or retries.
+ * HTTP writes a body, gRPC responds or fails, a queue delivery completes, retries or fails.
  *
  * Every unit must be finalized exactly once. Twice throws {@see Exception\AlreadyFinalizedError}. If the
  * host closed the unit first, finalizing throws {@see Exception\WorkDiscardedException}.
  *
  * Dropping the last reference to an unfinalized unit reports the loss to the host, which fails it: HTTP
- * answers 500, gRPC ends with INTERNAL, a job goes to fail or retry per queue policy. A lost unit is
- * always a failure, never an implicit response, and a late one: objects held in reference cycles wait
- * for the cycle collector, and a fatal error skips the report entirely, leaving the loss to the host's
- * own deadline.
+ * answers 500, gRPC ends with INTERNAL, a queue delivery is retried per its pipeline's policy. A lost
+ * unit is always a failure, never an implicit response, and a late one: objects held in reference
+ * cycles wait for the cycle collector, and a fatal error skips the report entirely, leaving the loss
+ * to the host's own deadline.
  */
 interface Work
 {
