@@ -64,10 +64,10 @@ if (!\function_exists('Rapira\get_version')) {
     /**
      * Write a diagnostic to Rapira's log under the `app` target.
      *
-     * Never blocks: the message is queued and the host writes it.
+     * The calling thread writes the record. While the log reader does not read, the call waits, as
+     * error_log() to stderr does.
      * Never throws: diagnostics are emitted from `catch` blocks, where an exception from the logger
      * would bury the original error.
-     * On queue overflow the message is dropped and the host reports the loss itself.
      *
      * @param array<array-key, mixed> $context Attached to the record as a single JSON string; a list
      *        encodes as a JSON array, anything else as an object.

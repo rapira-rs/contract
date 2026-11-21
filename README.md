@@ -27,7 +27,7 @@ function handle_request(callable $handler): bool {}
 /** Version of the running Rapira server. */
 function get_version(): string {}
 
-/** Queued to the host under the `app` target. Never blocks, never throws. */
+/** The calling thread writes the record to the host log under the `app` target. Never throws. */
 function log(string $message, LogLevel $level = LogLevel::Info, array $context = []): void {}
 
 /** No backing values; a PSR-3 bridge squashes eight levels into these five. */
