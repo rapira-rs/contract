@@ -199,9 +199,11 @@ $call instanceof StreamingResponder
   client to stop sending.
 - Response metadata has one home, the mutable accumulator HTTP refused — and the refusal does not
   transfer. An HTTP head commits once and whole, so a bag there is intermediate state moved across the
-  boundary; a gRPC call commits twice — headers at the stream's first yield, trailers at its
-  termination — and the trailers accumulate while `respond()` is still draining, unreachable as any
-  finalizer parameter. Snapshots happen on success and failure alike. The accumulator rejects the
+  boundary; a gRPC stream commits at its first yield: the headers leave, and the trailers of a
+  successful stream are fixed there. `fail()` commits again and sends every trailer present at that
+  time, so the trailers of a failure accumulate while `respond()` is still running, unreachable as any
+  finalizer parameter. A stream that terminates before yielding commits both halves at its end.
+  Snapshots happen on success and failure alike. The accumulator rejects the
   reserved transport names (the `grpc-`, `connect-`, `content-` and `trailer-` prefixes and the
   connection-specific names that `ResponseMetadata::addHeader()` lists) and a name with a character
   outside `0-9 a-z _ - .` after lower-casing (the gRPC header-name grammar), and the `-bin`
@@ -224,7 +226,8 @@ same spelling and one adapter catch serves every method kind; its curated subcla
 vocabulary. It carries its `Status` as
 `$status`, because `\Exception::$code` already exists as an untyped `int` and cannot be redeclared.
 `Grpc\Exception\HeadersAlreadyCommittedError` is `HeadAlreadyWrittenError`'s fact in gRPC spelling:
-the headers left with the stream's first yield, and only trailers stay open after it.
+the headers left with the stream's first yield. Trailers stay open after it, and a trailer added
+there reaches the client through `fail()`.
 
 ## Not in the contract
 

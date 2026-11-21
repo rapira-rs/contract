@@ -60,9 +60,11 @@ interface StreamingResponder extends Responder
      * {@see MessageStream} wait it rests in — `next()` or the iteration — delivers the same
      * exception: one delivery, at whichever wait point is active.
      *
-     * Response headers and trailers ride the {@see Responder::getResponseMetadata()} accumulator:
-     * headers snapshot at the first yield, trailers at termination, both at once when the stream
-     * terminates before yielding.
+     * Response headers and trailers ride the {@see Responder::getResponseMetadata()} accumulator.
+     * The first yield sends the headers, and it fixes the trailers of a successful stream. A trailer
+     * added after the first yield reaches the client only through {@see Responder::fail()}, which
+     * sends every trailer present at that time. A stream that terminates before yielding sends its
+     * headers and all its trailers at once.
      *
      * @param \Generator<int, string> $messages
      * @throws AlreadyFinalizedError The call was already finalized.

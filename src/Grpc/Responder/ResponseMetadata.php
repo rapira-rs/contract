@@ -13,10 +13,11 @@ use Rapira\Grpc\Responder;
  * Per-call accumulator for response headers and trailers, from {@see Responder::getResponseMetadata()}.
  * Service code adds entries anywhere during the call; the host snapshots them at the commit points.
  * For a single-message outcome both halves snapshot at finalization — the call's `respond()` or
- * {@see Responder::fail()}. For a streaming response, headers snapshot at the generator's first yield —
- * "add headers, then start yielding" is the entire commit API — and trailers when the stream
- * terminates: completed or failed. A call the host closed mid-stream was finalized by the closure
- * itself, so its trailer snapshot simply has no destination.
+ * {@see Responder::fail()}. For a streaming response, both halves snapshot at the generator's first
+ * yield: add headers and trailers, then start yielding. A stream that completes sends that trailer
+ * snapshot. {@see Responder::fail()} takes a new snapshot, so it also sends the trailers added after
+ * the first yield. A stream that terminates before yielding snapshots both halves at its end. A call
+ * the host closed mid-stream was finalized by the closure itself, so its trailers have no destination.
  *
  * Allocated fresh with the call and dead with it; nothing survives into the worker's next call.
  *
@@ -66,7 +67,9 @@ interface ResponseMetadata
 
     /**
      * Add a response trailer. Same rules as {@see self::addHeader()}, but trailers stay open for the
-     * whole call — streaming is where they earn their keep — and close only with its finalization.
+     * whole call and close only with its finalization. A streaming response that completes sends the
+     * trailers present at its first yield. A trailer added after the first yield reaches the client
+     * only through {@see Responder::fail()}.
      *
      * @param non-empty-string $name
      * @param string $value Printable ASCII (0x20-0x7E); empty is allowed.
